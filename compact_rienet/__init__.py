@@ -28,13 +28,11 @@ Project URL: https://github.com/author/compact-rienet
 from .layers import CompactRIEnetLayer
 from .losses import variance_loss_function
 from . import custom_layers, losses
-import importlib.metadata
+from .version import __version__
 
 # Author information
 __author__ = "Christian Bongiorno"
 __email__ = "christian.bongiorno@centralesupelec.fr"
-
-__version__ = importlib.metadata.version("compact-rienet")
 
 # Public API
 __all__ = [

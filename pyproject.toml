@@ -1,9 +1,10 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.0"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "compact-rienet"
+version = "1.0.3"
 description = "A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization"
 readme = "README.md"
 requires-python = ">=3.8"

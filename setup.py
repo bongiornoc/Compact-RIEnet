@@ -4,6 +4,7 @@ Setup script for Compact-RIEnet package.
 
 from setuptools import setup, find_packages
 import os
+from compact_rienet.version import __version__
 
 # Read the contents of README file
 this_directory = os.path.abspath(os.path.dirname(__file__))
@@ -12,7 +13,7 @@ with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name="compact-rienet",
-    use_scm_version=True,
+    version=__version__,
     author="Christian Bongiorno",
     author_email="christian.bongiorno@centralesupelec.fr",
     description="A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization",
