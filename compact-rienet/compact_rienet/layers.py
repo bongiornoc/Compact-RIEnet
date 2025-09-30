@@ -1,24 +1,24 @@
 """
-Compact-RIEnet: A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization
+Compact-RIEnet: A Compact Rotational Invariant Eigenvalue Network for Portfolio Optimization
 
 This module implements the Compact-RIEnet layer, a neural network architecture for 
 portfolio optimization that processes financial time series data and outputs portfolio weights.
 
-The architecture is based on eigenvalue decomposition of covariance matrices and recurrent
-neural networks to capture temporal dependencies in financial data.
+The architecture is based on Rotational Invariant Estimators (RIE) of the covariance matrix
+combined with recurrent neural networks to capture temporal dependencies in financial data.
 
 References:
 -----------
-Please cite the following papers when using this code:
-[Paper references to be provided by the author]
+Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
+"Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage."
+Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25).
 
 Copyright (c) 2025
 """
 
 import tensorflow as tf
 from keras import layers
-from typing import Optional, List, Tuple, Union
-import numpy as np
+from typing import Optional, List, Tuple, Union, Sequence
 
 from .custom_layers import (
     LagTransformLayer,
@@ -37,63 +37,64 @@ from .custom_layers import (
 @tf.keras.utils.register_keras_serializable(package='compact_rienet')
 class CompactRIEnetLayer(layers.Layer):
     """
-    Compact Recurrent-Invariant Eigenvalue Network (Compact-RIEnet) Layer.
-    
-    This layer implements a neural network architecture for portfolio optimization
-    that processes daily returns and outputs portfolio weights. The architecture
-    combines eigenvalue decomposition of covariance matrices with recurrent neural
-    networks to capture both cross-sectional relationships and temporal dependencies
-    in financial data.
-    
-    The layer automatically scales input daily returns by 252 (annualization factor)
-    and applies a series of transformations including:
-    - Lag transformation for temporal preprocessing
-    - Covariance matrix estimation and eigenvalue decomposition
-    - Recurrent processing of eigenvalues with GRU networks
-    - Standard deviation transformation with dense networks
-    - Portfolio weight computation through matrix operations
-    
+    Compact Rotational Invariant Estimator (RIE) Network layer for GMV portfolios.
+
+    This layer implements the compact network described in Bongiorno et al. (2025) for
+    global minimum-variance (GMV) portfolio construction. The architecture couples
+    Rotational Invariant Estimators of the covariance matrix with recurrent neural
+    networks in order to clean the eigen-spectrum and learn marginal volatilities in a
+    parameter-efficient way.
+
+    The layer automatically scales daily returns by 252 (annualisation factor) and
+    applies the following stages:
+
+    - Lag transformation with a five-parameter RIE-friendly non-linearity
+    - Sample covariance estimation and eigenvalue decomposition
+    - Bidirectional recurrent cleaning of eigenvalues (GRU or LSTM)
+    - Dense transformation of marginal volatilities
+    - Recombination into Σ⁻¹ followed by GMV weight normalisation
+
     Parameters
     ----------
-    output_type : str, default 'weights'
-        Type of output to return. Options:
-        - 'weights': Portfolio weights (normalized to sum to 1)
-        - 'precision': Transformed precision matrix (inverse covariance)
-        
+    output_type : Union[str, Sequence[str]], default 'weights'
+        Component(s) to return. Each entry must belong to
+        {'weights', 'precision', 'covariance'} or the special string 'all'. When multiple
+        components are requested a dictionary mapping component name to tensor is
+        returned.
+    recurrent_layer_sizes : Sequence[int], optional
+        Hidden sizes of the recurrent cleaning block. Defaults to [18], matching the
+        compact GMV network in the paper.
+    std_hidden_layer_sizes : Sequence[int], optional
+        Hidden sizes of the dense network acting on marginal volatilities. Defaults to
+        [8], matching the paper.
+    recurrent_cell : str, default 'GRU'
+        Recurrent cell family used inside the eigenvalue cleaning block. Accepted
+        values are 'GRU' and 'LSTM'.
     name : str, optional
-        Name of the layer.
-        
+        Name of the Keras layer instance.
     **kwargs : dict
-        Additional keyword arguments passed to the base Layer class.
-        
+        Additional keyword arguments propagated to ``tf.keras.layers.Layer``.
+
     Input Shape
     -----------
-    (batch_size, n_stocks, n_days) : tf.Tensor
-        Daily returns data where:
-        - batch_size: Number of samples in the batch
-        - n_stocks: Number of assets/stocks 
-        - n_days: Number of time periods (days)
-        
+    (batch_size, n_stocks, n_days)
+        Daily return tensors for each batch element, stock and time step.
+
     Output Shape
     ------------
-    If output_type='weights':
-        (batch_size, n_stocks, 1) : tf.Tensor
-            Portfolio weights normalized to sum to 1
-            
-    If output_type='precision':
-        (batch_size, n_stocks, n_stocks) : tf.Tensor
-            Transformed precision matrix (inverse covariance)
-            
+    Depends on ``output_type``:
+        - 'weights' -> (batch_size, n_stocks, 1)
+        - 'precision' or 'covariance' -> (batch_size, n_stocks, n_stocks)
+        - Multiple components -> ``dict`` mapping component name to the shapes above
+
     Notes
     -----
-    The architecture uses fixed hyperparameters optimized for portfolio optimization:
-    - Hidden layer size: 8 units
-    - Recurrent layer size: 32 units  
-    - Recurrent model: GRU (Gated Recurrent Unit)
-    - Bidirectional processing for temporal modeling
-    
-    The input returns are automatically scaled by 252 to account for annualization
-    effects commonly used in financial modeling.
+    Defaults replicate the compact RIE network optimised for GMV portfolios in the
+    reference paper: a single bidirectional GRU layer with 18 units per direction and a
+    dense marginal-volatility head with 8 hidden units. Inputs are annualised by 252 and
+    the resulting Σ⁻¹ is symmetrised for numerical stability. Training on batches that
+    span different asset universes is recommended when deploying on variable-dimension
+    portfolios.
     
     Examples
     --------
@@ -112,12 +113,16 @@ class CompactRIEnetLayer(layers.Layer):
     
     References
     ----------
-    Please cite the following papers when using this code:
-    [Paper references to be provided by the author]
+    Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
+    Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage.
+    Bongiorno, C., Challet, D., & Loeper, G. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918).
     """
     
-    def __init__(self, 
-                 output_type: str = 'weights',
+    def __init__(self,
+                 output_type: Union[str, Sequence[str]] = 'weights',
+                 recurrent_layer_sizes: Optional[Sequence[int]] = None,
+                 std_hidden_layer_sizes: Optional[Sequence[int]] = None,
+                 recurrent_cell: str = 'GRU',
                  name: Optional[str] = None,
                  **kwargs):
         """
@@ -125,24 +130,85 @@ class CompactRIEnetLayer(layers.Layer):
         
         Parameters
         ----------
-        output_type : str, default 'weights'
-            Type of output ('weights' or 'precision')
+        output_type : Union[str, Sequence[str]], default 'weights'
+            Requested output component(s).
+        recurrent_layer_sizes : Sequence[int], optional
+            Hidden sizes of the recurrent cleaning block.
+        std_hidden_layer_sizes : Sequence[int], optional
+            Hidden sizes of the dense marginal-volatility block.
+        recurrent_cell : str, default 'GRU'
+            Type of recurrent cell to use ('GRU' or 'LSTM').
         name : str, optional
             Layer name
         **kwargs : dict
             Additional arguments for base Layer
         """
         super().__init__(name=name, **kwargs)
-        
-        if output_type not in ['weights', 'precision']:
-            raise ValueError("output_type must be 'weights' or 'precision'")
-            
-        self.output_type = output_type
-        
-        # Fixed architecture parameters optimized for portfolio optimization
-        self._hidden_layer_sizes = [8]
-        self._recurrent_layer_sizes = [32] 
-        self._recurrent_model = 'GRU'
+
+        allowed_outputs = ('weights', 'precision', 'covariance')
+        self._output_config = output_type if isinstance(output_type, str) else list(output_type)
+
+        if isinstance(output_type, str):
+            if output_type == 'all':
+                components = list(allowed_outputs)
+            else:
+                if output_type not in allowed_outputs:
+                    raise ValueError(
+                        "output_type must be one of 'weights', 'precision', 'covariance', or 'all'"
+                    )
+                components = [output_type]
+        else:
+            output_list = list(output_type)
+            if not output_list:
+                raise ValueError("output_type cannot be an empty sequence")
+            expanded: List[str] = []
+            for entry in output_list:
+                if entry == 'all':
+                    expanded.extend(allowed_outputs)
+                    continue
+                if entry not in allowed_outputs:
+                    raise ValueError(
+                        "All requested outputs must be in {'weights', 'precision', 'covariance', 'all'}"
+                    )
+                expanded.append(entry)
+            seen = set()
+            components = []
+            for entry in expanded:
+                if entry not in seen:
+                    components.append(entry)
+                    seen.add(entry)
+
+        self.output_components = tuple(components)
+        self.output_type = components[0] if len(components) == 1 else tuple(components)
+
+        if recurrent_layer_sizes is None:
+            recurrent_layer_sizes = [18]
+        else:
+            recurrent_layer_sizes = list(recurrent_layer_sizes)
+            if not recurrent_layer_sizes:
+                raise ValueError("recurrent_layer_sizes must contain at least one positive integer")
+        if std_hidden_layer_sizes is None:
+            std_hidden_layer_sizes = [8]
+        else:
+            std_hidden_layer_sizes = list(std_hidden_layer_sizes)
+            if not std_hidden_layer_sizes:
+                raise ValueError("std_hidden_layer_sizes must contain at least one positive integer")
+
+        for size in recurrent_layer_sizes:
+            if size <= 0:
+                raise ValueError("recurrent_layer_sizes must contain positive integers")
+        for size in std_hidden_layer_sizes:
+            if size <= 0:
+                raise ValueError("std_hidden_layer_sizes must contain positive integers")
+
+        normalized_cell = recurrent_cell.strip().upper()
+        if normalized_cell not in {'GRU', 'LSTM'}:
+            raise ValueError("recurrent_cell must be either 'GRU' or 'LSTM'")
+
+        # Architecture parameters (paper defaults preserved if args omitted)
+        self._std_hidden_layer_sizes = list(std_hidden_layer_sizes)
+        self._recurrent_layer_sizes = list(recurrent_layer_sizes)
+        self._recurrent_model = normalized_cell
         self._direction = 'bidirectional'
         self._dimensional_features = ['n_stocks', 'n_days', 'q']
         self._annualization_factor = 252.0
@@ -193,7 +259,7 @@ class CompactRIEnetLayer(layers.Layer):
         
         # Standard deviation transformation
         self.std_transform = DeepLayer(
-            hidden_layer_sizes=self._hidden_layer_sizes + [1],
+            hidden_layer_sizes=self._std_hidden_layer_sizes + [1],
             last_activation='softplus',
             name=f"{self.name}_std_transform"
         )
@@ -204,15 +270,15 @@ class CompactRIEnetLayer(layers.Layer):
             name=f"{self.name}_std_norm"
         )
         
-        # Matrix reconstruction
+        # Matrix reconstruction (see Eq. 13-15)
         self.eigen_product = EigenProductLayer(
-            scaling_factor='inverse',
+            scaling_factor='none',
             name=f"{self.name}_eigen_product"
         )
-        
-        self.covariance_reconstruct = CovarianceLayer(
+
+        self.inverse_scale_outer = CovarianceLayer(
             normalize=False,
-            name=f"{self.name}_cov_reconstruct"
+            name=f"{self.name}_inverse_scale_outer"
         )
         
         # Portfolio weight computation
@@ -237,8 +303,10 @@ class CompactRIEnetLayer(layers.Layer):
         Returns
         -------
         tf.Tensor
-            Output tensor - either portfolio weights or precision matrix
-            depending on output_type parameter
+            Output tensor determined by `output_type`:
+            - weights: portfolio weights (batch, n_stocks, 1)
+            - precision: cleaned precision matrix Σ^{-1}
+            - covariance: pseudo-inverse covariance Σ
         """
         # Scale inputs by annualization factor
         scaled_inputs = inputs * self._annualization_factor
@@ -263,28 +331,45 @@ class CompactRIEnetLayer(layers.Layer):
         
         # Transform eigenvalues with recurrent network
         transformed_eigenvalues = self.eigenvalue_transform(eigenvalues_enhanced)
-        
+        spectrum_epsilon = tf.cast(tf.keras.backend.epsilon(), dtype=transformed_eigenvalues.dtype)
+        transformed_eigenvalues = tf.maximum(transformed_eigenvalues, spectrum_epsilon)
+
         # Transform standard deviations
         transformed_std = self.std_transform(std)
         transformed_std = self.std_normalization(transformed_std)
-        
-        # Reconstruct correlation matrix from transformed eigenvalues
-        transformed_correlation = self.eigen_product(
+        transformed_std = tf.maximum(
+            transformed_std,
+            tf.cast(tf.keras.backend.epsilon(), dtype=transformed_std.dtype)
+        )
+
+        # Build inverse correlation matrix (Eq. 13-14 of the paper)
+        inverse_correlation = self.eigen_product(
             transformed_eigenvalues, eigenvectors
         )
-        
-        # Reconstruct covariance matrix
-        transformed_covariance = (
-            transformed_correlation * 
-            self.covariance_reconstruct(transformed_std)
-        )
-        
-        if self.output_type == 'precision':
-            return transformed_correlation  # This is actually the precision matrix
-        else:  # output_type == 'weights'
-            # Compute portfolio weights
-            weights = self.portfolio_weights(transformed_covariance)
-            return weights
+
+        # Combine with marginal inverse volatilities to obtain Σ^{-1}
+        inverse_volatility = self.inverse_scale_outer(transformed_std)
+        precision_matrix = inverse_correlation * inverse_volatility
+        precision_matrix = 0.5 * (precision_matrix + tf.linalg.matrix_transpose(precision_matrix))
+
+        results = {}
+
+        if 'precision' in self.output_components:
+            results['precision'] = precision_matrix
+
+        if 'covariance' in self.output_components:
+            covariance = tf.linalg.pinv(precision_matrix)
+            covariance = 0.5 * (covariance + tf.linalg.matrix_transpose(covariance))
+            results['covariance'] = covariance
+
+        if 'weights' in self.output_components:
+            weights = self.portfolio_weights(precision_matrix)
+            results['weights'] = weights
+
+        if len(self.output_components) == 1:
+            return results[self.output_components[0]]
+
+        return results
     
     def get_config(self) -> dict:
         """
@@ -297,7 +382,10 @@ class CompactRIEnetLayer(layers.Layer):
         """
         config = super().get_config()
         config.update({
-            'output_type': self.output_type,
+            'output_type': self._output_config,
+            'recurrent_layer_sizes': list(self._recurrent_layer_sizes),
+            'std_hidden_layer_sizes': list(self._std_hidden_layer_sizes),
+            'recurrent_cell': self._recurrent_model,
         })
         return config
     
@@ -332,9 +420,15 @@ class CompactRIEnetLayer(layers.Layer):
         tuple
             Output shape
         """
-        batch_size, n_stocks, n_days = input_shape
-        
-        if self.output_type == 'weights':
-            return (batch_size, n_stocks, 1)
-        else:  # precision
+        input_shape = tf.TensorShape(input_shape).as_list()
+        batch_size, n_stocks, _ = input_shape
+
+        def shape_for(component: str) -> Tuple[int, ...]:
+            if component == 'weights':
+                return (batch_size, n_stocks, 1)
             return (batch_size, n_stocks, n_stocks)
+
+        if len(self.output_components) == 1:
+            return shape_for(self.output_components[0])
+
+        return {component: shape_for(component) for component in self.output_components}

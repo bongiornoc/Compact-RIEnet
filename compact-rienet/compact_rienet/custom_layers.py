@@ -3,12 +3,14 @@ Custom layers module for Compact-RIEnet.
 
 This module contains all the specialized neural network layers required for the
 Compact-RIEnet architecture, including layers for covariance estimation,
-eigenvalue decomposition, and specialized transformations for financial data.
+Rotational Invariant Estimator (RIE) based eigenvalue cleaning, and specialized
+transformations for financial data.
 
 References:
 -----------
-Please cite the following papers when using this code:
-[Paper references to be provided by the author]
+Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
+"Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage."
+Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25).
 
 Copyright (c) 2025
 """
@@ -32,17 +34,25 @@ class StandardDeviationLayer(layers.Layer):
     axis : int, default 1
         Axis along which to compute statistics
     demean : bool, default False
-        Whether to demean the data before computing variance
+        Whether to use an unbiased denominator (n-1)
+    epsilon : float, default 1e-6
+        Small value added for numerical stability
     name : str, optional
         Layer name
     """
     
-    def __init__(self, axis: int = 1, demean: bool = False, name: Optional[str] = None, **kwargs):
+    def __init__(self,
+                 axis: int = 1,
+                 demean: bool = False,
+                 epsilon: float = 1e-6,
+                 name: Optional[str] = None,
+                 **kwargs):
         if name is None:
             raise ValueError("StandardDeviationLayer must have a name.")
         super().__init__(name=name, **kwargs)
         self.axis = axis
         self.demean = demean
+        self.epsilon = epsilon
 
     def call(self, x: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         """
@@ -58,25 +68,31 @@ class StandardDeviationLayer(layers.Layer):
         tuple of tf.Tensor
             (standard_deviation, mean)
         """
-        sample_size = tf.cast(tf.shape(x)[self.axis], tf.float32) 
-        
+        dtype = x.dtype
+        epsilon = tf.cast(self.epsilon, dtype)
+
+        sample_size = tf.cast(tf.shape(x)[self.axis], dtype)
+        sample_size = tf.maximum(sample_size, 1.0)
+
+        mean = tf.reduce_mean(x, axis=self.axis, keepdims=True)
+        centered = x - mean
+
         if self.demean:
-            mean = tf.reduce_mean(x, axis=self.axis, keepdims=True)
-            x = x - mean
-            sample_size -= 1
+            denom = tf.maximum(sample_size - 1.0, 1.0)
         else:
-            mean = tf.zeros_like(tf.reduce_mean(x, axis=self.axis, keepdims=True))
-            
-        variance = tf.reduce_sum(tf.square(x), axis=self.axis, keepdims=True) / sample_size
-        std = tf.sqrt(variance)
-        
+            denom = sample_size
+
+        variance = tf.reduce_sum(tf.square(centered), axis=self.axis, keepdims=True) / denom
+        std = tf.sqrt(tf.maximum(variance, epsilon))
+
         return std, mean
 
     def get_config(self) -> dict:
         config = super().get_config()
         config.update({
             'axis': self.axis,
-            'demean': self.demean
+            'demean': self.demean,
+            'epsilon': float(self.epsilon)
         })
         return config
 
@@ -539,16 +555,24 @@ class CustomNormalizationLayer(layers.Layer):
         Normalization mode: 'sum' or 'inverse'
     axis : int, default -2
         Axis along which to normalize
+    epsilon : float, default 1e-6
+        Numerical stability constant
     name : str, optional
         Layer name
     """
     
-    def __init__(self, mode: str = 'sum', axis: int = -2, name: Optional[str] = None, **kwargs):
+    def __init__(self,
+                 mode: str = 'sum',
+                 axis: int = -2,
+                 epsilon: float = 1e-6,
+                 name: Optional[str] = None,
+                 **kwargs):
         if name is None:
             raise ValueError("CustomNormalizationLayer must have a name.")
         super().__init__(name=name, **kwargs)
         self.mode = mode
         self.axis = axis
+        self.epsilon = epsilon
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         """
@@ -564,22 +588,29 @@ class CustomNormalizationLayer(layers.Layer):
         tf.Tensor
             Normalized tensor
         """
-        n = tf.cast(tf.shape(x)[self.axis], dtype=tf.float32)
-        
+        dtype = x.dtype
+        epsilon = tf.cast(self.epsilon, dtype)
+        n = tf.cast(tf.shape(x)[self.axis], dtype)
+
+        denom_axis = tf.reduce_sum(x, axis=self.axis, keepdims=True)
+
         if self.mode == 'sum':
-            x = n * x / tf.reduce_sum(x, axis=self.axis, keepdims=True)
+            x = n * x / tf.maximum(denom_axis, epsilon)
         elif self.mode == 'inverse':
+            x = tf.maximum(x, epsilon)
             inv = tf.math.reciprocal(x)
-            x = n * inv / tf.reduce_sum(inv, axis=self.axis, keepdims=True)
-            x = tf.math.reciprocal(x)
-            
+            inv_total = tf.reduce_sum(inv, axis=self.axis, keepdims=True)
+            inv_normalized = n * inv / tf.maximum(inv_total, epsilon)
+            x = tf.math.reciprocal(tf.maximum(inv_normalized, epsilon))
+        
         return x
 
     def get_config(self) -> dict:
         config = super().get_config()
         config.update({
             'mode': self.mode,
-            'axis': self.axis
+            'axis': self.axis,
+            'epsilon': float(self.epsilon)
         })
         return config
 
@@ -682,16 +713,24 @@ class NormalizedSum(layers.Layer):
         First axis for summation
     axis_2 : int, default -2
         Second axis for normalization
+    epsilon : float, default 1e-6
+        Numerical stability constant
     name : str, optional
         Layer name
     """
     
-    def __init__(self, axis_1: int = -1, axis_2: int = -2, name: Optional[str] = None, **kwargs):
+    def __init__(self,
+                 axis_1: int = -1,
+                 axis_2: int = -2,
+                 epsilon: float = 1e-6,
+                 name: Optional[str] = None,
+                 **kwargs):
         if name is None:
             raise ValueError("NormalizedSum must have a name.")
         super().__init__(name=name, **kwargs)
         self.axis_1 = axis_1
         self.axis_2 = axis_2
+        self.epsilon = epsilon
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         """
@@ -707,14 +746,24 @@ class NormalizedSum(layers.Layer):
         tf.Tensor
             Normalized sum
         """
+        dtype = x.dtype
+        epsilon = tf.cast(self.epsilon, dtype)
         w = tf.reduce_sum(x, axis=self.axis_1, keepdims=True)
-        return w / tf.reduce_sum(w, axis=self.axis_2, keepdims=True)
+        denominator = tf.reduce_sum(w, axis=self.axis_2, keepdims=True)
+        sign = tf.where(denominator >= 0, tf.ones_like(denominator), -tf.ones_like(denominator))
+        safe_denominator = tf.where(
+            tf.abs(denominator) < epsilon,
+            sign * epsilon,
+            denominator
+        )
+        return w / safe_denominator
 
     def get_config(self) -> dict:
         config = super().get_config()
         config.update({
             'axis_1': self.axis_1,
-            'axis_2': self.axis_2
+            'axis_2': self.axis_2,
+            'epsilon': float(self.epsilon)
         })
         return config
 
@@ -834,3 +883,17 @@ class LagTransformLayer(layers.Layer):
             'warm_start': self.warm_start
         })
         return config
+
+
+__all__ = [
+    'StandardDeviationLayer',
+    'CovarianceLayer',
+    'SpectralDecompositionLayer',
+    'DimensionAwareLayer',
+    'DeepLayer',
+    'DeepRecurrentLayer',
+    'CustomNormalizationLayer',
+    'EigenProductLayer',
+    'NormalizedSum',
+    'LagTransformLayer',
+]

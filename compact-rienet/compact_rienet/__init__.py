@@ -1,65 +1,45 @@
 """
-Compact-RIEnet: A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization
+Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation
 
-This package provides a neural network architecture specifically designed for portfolio
-optimization tasks. The Compact-RIEnet layer processes financial time series data and
-outputs optimized portfolio weights using eigenvalue decomposition and recurrent networks.
+Compact-RIEnet implements the compact RIE-based architecture introduced in Bongiorno et al. (2025) for global minimum-variance (GMV) portfolio construction. It processes financial return tensors and outputs optimised GMV portfolio weights using Rotational Invariant Estimator (RIE) techniques for covariance cleaning combined with recurrent neural networks.
 
 Key Features:
-- Eigenvalue-based covariance matrix processing
-- Recurrent neural networks for temporal modeling  
-- Specialized loss functions for portfolio optimization
-- Professional implementation with comprehensive documentation
+- GMV-focused objective with a differentiable variance loss
+- RIE-denoised covariance spectrum for dimension-agnostic deployment
+- Configurable recurrent cleaning block (GRU/LSTM) with paper-aligned defaults
+- Professional implementation with documentation, tests, and type hints
 
 Main Components:
-- CompactRIEnetLayer: Main neural network layer for portfolio optimization
-- Loss functions: Specialized loss functions including variance_loss_function
-- Custom layers: Internal building blocks for the architecture
+- `CompactRIEnetLayer`: GMV layer returning weights, precision, and/or covariance
+- `variance_loss_function`: Training objective for variance minimisation
+- `custom_layers`: Internal building blocks of the architecture
 
 References:
 -----------
-Please cite the following papers when using this code:
-[Paper references to be provided by the author]
+- Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. ICAIF '25.
+- Bongiorno, C., Challet, D., & Loeper, G. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning. arXiv:2507.01918.
 
-Examples:
----------
->>> import tensorflow as tf
->>> from compact_rienet import CompactRIEnetLayer, variance_loss_function
->>> 
->>> # Create the layer
->>> layer = CompactRIEnetLayer(output_type='weights')
->>> 
->>> # Sample data: 32 batches, 10 stocks, 60 days of returns
->>> returns = tf.random.normal((32, 10, 60)) 
->>> 
->>> # Get portfolio weights
->>> weights = layer(returns)
->>> 
->>> # Use with variance loss for training
->>> true_cov = tf.eye(10, batch_shape=[32])  # Example covariance
->>> loss = variance_loss_function(true_cov, weights)
+Contact Prof. Christian Bongiorno (<christian.bongiorno@centralesupelec.fr>) for calibrated weights or collaboration requests.
 
 Copyright (c) 2025
 """
 
 from .layers import CompactRIEnetLayer
-from .losses import (
-    variance_loss_function,
-    buy_and_hold_volatility_loss,
-    frobenius_loss_function
-)
+from .losses import variance_loss_function
+from . import custom_layers, losses
 
 # Version information
 __version__ = "1.0.0"
-__author__ = "Author Name"
-__email__ = "author@email.com"
+__author__ = "Christian Bongiorno"
+__email__ = "christian.bongiorno@centralesupelec.fr"
 
 # Public API
 __all__ = [
     'CompactRIEnetLayer',
-    'variance_loss_function', 
-    'buy_and_hold_volatility_loss',
-    'frobenius_loss_function',
+    'variance_loss_function',
+    'print_citation',
+    'custom_layers',
+    'losses',
     '__version__'
 ]
 
@@ -67,23 +47,24 @@ __all__ = [
 def print_citation():
     """Print citation information for academic use."""
     citation = """
-    Please cite the following papers when using Compact-RIEnet:
-    
-    [Paper references to be provided by the author]
-    
+    Please cite the following references when using Compact-RIEnet:
+
+    Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
+    Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage.
+    Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25).
+
+    Bongiorno, C., Challet, D., & Loeper, G. (2025).
+    End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning.
+    arXiv preprint arXiv:2507.01918.
+
     For software citation:
-    
+
     @software{compact_rienet2025,
-        title={Compact-RIEnet: A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization},
-        author={Author Name},
+        title={Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation},
+        author={Christian Bongiorno},
         year={2025},
         version={1.0.0},
         url={https://github.com/author/compact-rienet}
     }
     """
     print(citation)
-
-# Display citation on import
-print("Compact-RIEnet v{} loaded.".format(__version__))
-print("Please cite the appropriate papers when using this software.")
-print("Use compact_rienet.print_citation() for citation information.")

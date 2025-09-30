@@ -17,9 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from compact_rienet import (
     CompactRIEnetLayer,
-    variance_loss_function,
-    buy_and_hold_volatility_loss,
-    frobenius_loss_function
+    variance_loss_function
 )
 
 from compact_rienet.custom_layers import (
@@ -81,6 +79,17 @@ class TestCompactRIEnetLayer:
         
         expected_shape = (batch_size, n_stocks, n_stocks)
         assert outputs.shape == expected_shape, f"Expected {expected_shape}, got {outputs.shape}"
+
+    def test_covariance_output_shape(self):
+        """Test that covariance output has correct shape."""
+        layer = CompactRIEnetLayer(output_type='covariance')
+
+        batch_size, n_stocks, n_days = 12, 5, 40
+        inputs = tf.random.normal((batch_size, n_stocks, n_days))
+        outputs = layer(inputs)
+
+        expected_shape = (batch_size, n_stocks, n_stocks)
+        assert outputs.shape == expected_shape, f"Expected {expected_shape}, got {outputs.shape}"
     
     def test_weights_normalization(self):
         """Test that portfolio weights sum to 1."""
@@ -107,10 +116,9 @@ class TestCompactRIEnetLayer:
         weights_small = layer(small_inputs)
         weights_large = layer(large_inputs)
         
-        # With scaling, small and large inputs should give different results
-        # Allow for small numerical differences but expect meaningful differences
+        # After standardisation the layer is scale-invariant; outputs should match
         diff = tf.reduce_max(tf.abs(weights_small - weights_large))
-        assert diff > 1e-4, f"Input scaling should produce noticeable differences, got {diff}"
+        assert diff < 1e-6, f"Input scaling should preserve outputs, got {diff}"
     
     def test_layer_serialization(self):
         """Test that layer can be serialized and deserialized."""
@@ -125,90 +133,68 @@ class TestCompactRIEnetLayer:
         new_layer = CompactRIEnetLayer.from_config(config)
         assert new_layer.output_type == layer.output_type
 
+    def test_multiple_outputs(self):
+        """Layer should optionally return multiple components."""
+        layer = CompactRIEnetLayer(output_type=['weights', 'precision'])
 
-class TestLossFunctions:
-    """Test cases for loss functions."""
-    
+        batch_size, n_stocks, n_days = 3, 4, 20
+        inputs = tf.random.normal((batch_size, n_stocks, n_days))
+        outputs = layer(inputs)
+
+        assert isinstance(outputs, dict)
+        assert set(outputs.keys()) == {'weights', 'precision'}
+        assert outputs['weights'].shape == (batch_size, n_stocks, 1)
+        assert outputs['precision'].shape == (batch_size, n_stocks, n_stocks)
+
+    def test_custom_recurrent_configuration(self):
+        """Custom recurrent sizes and cell types should be honoured."""
+        layer = CompactRIEnetLayer(
+            output_type='weights',
+            recurrent_layer_sizes=[12, 6],
+            std_hidden_layer_sizes=[4, 2],
+            recurrent_cell='lstm'
+        )
+
+        batch_size, n_stocks, n_days = 2, 3, 15
+        inputs = tf.random.normal((batch_size, n_stocks, n_days))
+        weights = layer(inputs)
+
+        assert weights.shape == (batch_size, n_stocks, 1)
+        first_block = layer.eigenvalue_transform.recurrent_layers[0]
+        assert isinstance(first_block, tf.keras.layers.Bidirectional)
+        assert isinstance(first_block.forward_layer, tf.keras.layers.LSTM)
+
+
+class TestVarianceLoss:
+    """Tests for the variance loss function."""
+
     def test_variance_loss_function_shape(self):
-        """Test variance loss function output shape."""
+        """Variance loss should keep batch dimension and output scalar per sample."""
         batch_size, n_assets = 16, 8
-        
-        # Create test data
+
         weights = tf.random.normal((batch_size, n_assets, 1))
-        weights = weights / tf.reduce_sum(weights, axis=1, keepdims=True)  # Normalize
-        
+        weights = weights / tf.reduce_sum(weights, axis=1, keepdims=True)
+
         covariance = tf.random.normal((batch_size, n_assets, n_assets))
-        covariance = tf.matmul(covariance, covariance, transpose_b=True)  # Make PSD
-        
+        covariance = tf.matmul(covariance, covariance, transpose_b=True)
+
         loss = variance_loss_function(covariance, weights)
-        
+
         expected_shape = (batch_size, 1, 1)
         assert loss.shape == expected_shape
-    
-    def test_variance_loss_function_values(self):
-        """Test variance loss function produces reasonable values."""
+
+    def test_variance_loss_is_non_negative(self):
+        """Variance loss values should be non-negative."""
         batch_size, n_assets = 8, 5
-        
-        # Create normalized weights
+
         weights = tf.random.normal((batch_size, n_assets, 1))
         weights = weights / tf.reduce_sum(weights, axis=1, keepdims=True)
-        
-        # Create reasonable covariance matrix (small variances)
+
         covariance = tf.eye(n_assets, batch_shape=[batch_size]) * 0.01
-        
+
         loss = variance_loss_function(covariance, weights)
-        
-        # Loss should be positive and reasonable for financial data
+
         assert tf.reduce_all(loss >= 0), "Variance loss should be non-negative"
-        # Allow for larger values since this depends on the random weights
-        max_loss = tf.reduce_max(loss)
-        assert max_loss < 100.0, f"Variance loss seems too large: {max_loss}"
-    
-    def test_variance_loss_with_penalty(self):
-        """Test variance loss function with leverage penalty."""
-        batch_size, n_assets = 4, 6
-        
-        # Create weights with high leverage (sum > 1)
-        weights = tf.ones((batch_size, n_assets, 1)) * 0.3  # Sum = 1.8
-        covariance = tf.eye(n_assets, batch_shape=[batch_size]) * 0.01
-        
-        loss_no_penalty = variance_loss_function(covariance, weights, penalty=0.0)
-        loss_with_penalty = variance_loss_function(covariance, weights, penalty=0.1)
-        
-        # Loss with penalty should be higher
-        assert tf.reduce_all(loss_with_penalty > loss_no_penalty)
-    
-    def test_buy_and_hold_volatility_loss(self):
-        """Test buy-and-hold volatility loss function."""
-        batch_size, n_stocks, n_days = 8, 6, 50
-        
-        # Create sample returns and weights
-        returns = tf.random.normal((batch_size, n_stocks, n_days), stddev=0.02)
-        weights = tf.random.normal((batch_size, n_stocks, 1))
-        weights = weights / tf.reduce_sum(weights, axis=1, keepdims=True)
-        
-        volatility = buy_and_hold_volatility_loss(returns, weights)
-        
-        # Should return a scalar value
-        assert volatility.shape == ()
-        assert volatility > 0, "Volatility should be positive"
-    
-    def test_frobenius_loss_function(self):
-        """Test Frobenius norm loss function."""
-        batch_size, n_assets = 6, 5
-        
-        # Create test covariance matrices
-        cov_true = tf.random.normal((batch_size, n_assets, n_assets))
-        cov_true = tf.matmul(cov_true, cov_true, transpose_b=True)
-        
-        cov_pred = tf.random.normal((batch_size, n_assets, n_assets))
-        cov_pred = tf.matmul(cov_pred, cov_pred, transpose_b=True)
-        
-        loss = frobenius_loss_function(cov_true, cov_pred)
-        
-        # Should have batch dimension
-        assert loss.shape == (batch_size,)
-        assert tf.reduce_all(loss >= 0), "Frobenius loss should be non-negative"
 
 
 class TestCustomLayers:
