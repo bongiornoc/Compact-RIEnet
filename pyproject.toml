@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "compact-rienet"
-version = "1.0.1"
+version = "1.0.2"
 description = "A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Author Name", email = "author@email.com"}
+    {name = "Christian Bongiorno", email = "christian.bongiorno@centralesupelec.fr"}
 ]
 maintainers = [
-    {name = "Author Name", email = "author@email.com"}
+    {name = "Christian Bongiorno", email = "christian.bongiorno@centralesupelec.fr"}
 ]
 keywords = [
     "portfolio optimization",
