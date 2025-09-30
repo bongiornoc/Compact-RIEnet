@@ -17,7 +17,7 @@ Main Components:
 References:
 -----------
 - Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. ICAIF '25.
-- Bongiorno, C., Challet, D., & Loeper, G. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning. arXiv:2507.01918.
+- Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning. arXiv:2507.01918.
 
 Contact Prof. Christian Bongiorno (<christian.bongiorno@centralesupelec.fr>) for calibrated weights or collaboration requests.
 
