@@ -1,0 +1,16 @@
+LICENSE
+MANIFEST.in
+README.md
+pyproject.toml
+setup.py
+compact_rienet/__init__.py
+compact_rienet/custom_layers.py
+compact_rienet/layers.py
+compact_rienet/losses.py
+compact_rienet.egg-info/PKG-INFO
+compact_rienet.egg-info/SOURCES.txt
+compact_rienet.egg-info/dependency_links.txt
+compact_rienet.egg-info/not-zip-safe
+compact_rienet.egg-info/requires.txt
+compact_rienet.egg-info/top_level.txt
+tests/test_compact_rienet.py
