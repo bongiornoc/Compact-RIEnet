@@ -53,7 +53,7 @@ def print_citation():
     Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage.
     Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25).
 
-    Bongiorno, C., Challet, D., & Loeper, G. (2025).
+    Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
     End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning.
     arXiv preprint arXiv:2507.01918.
 
