@@ -38,7 +38,7 @@ pip install -e .
 import tensorflow as tf
 from compact_rienet import CompactRIEnetLayer, variance_loss_function
 
-# Defaults reproduce the compact GMV architecture (bidirectional GRU with 18 units)
+# Defaults reproduce the compact GMV architecture (bidirectional GRU with 16 units)
 rienet_layer = CompactRIEnetLayer(output_type=['weights', 'precision'])
 
 # Sample data: (batch_size, n_stocks, n_days)

@@ -62,11 +62,14 @@ class CompactRIEnetLayer(layers.Layer):
         components are requested a dictionary mapping component name to tensor is
         returned.
     recurrent_layer_sizes : Sequence[int], optional
-        Hidden sizes of the recurrent cleaning block. Defaults to [18], matching the
-        compact GMV network in the paper.
+        Hidden sizes of the recurrent cleaning block. Defaults to [16] matching the
+        compact GMV network in the paper. If a sequence with multiple integers is
+        provided (e.g. [32, 16]) the recurrent cleaning head will apply multiple hidden
+        layers in the given order: first a layer with 32 units, then one with 16 units.
     std_hidden_layer_sizes : Sequence[int], optional
         Hidden sizes of the dense network acting on marginal volatilities. Defaults to
-        [8], matching the paper.
+        [8] matching the paper. Sequences are interpreted similarly (e.g. [64, 8] ->
+        two dense hidden layers with 64 then 8 units).
     recurrent_cell : str, default 'GRU'
         Recurrent cell family used inside the eigenvalue cleaning block. Accepted
         values are 'GRU' and 'LSTM'.
@@ -90,7 +93,7 @@ class CompactRIEnetLayer(layers.Layer):
     Notes
     -----
     Defaults replicate the compact RIE network optimised for GMV portfolios in the
-    reference paper: a single bidirectional GRU layer with 18 units per direction and a
+    reference paper: a single bidirectional GRU layer with 16 units per direction and a
     dense marginal-volatility head with 8 hidden units. Inputs are annualised by 252 and
     the resulting Σ⁻¹ is symmetrised for numerical stability. Training on batches that
     span different asset universes is recommended when deploying on variable-dimension
@@ -115,13 +118,13 @@ class CompactRIEnetLayer(layers.Layer):
     ----------
     Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
     Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage.
-    Bongiorno, C., Challet, D., & Loeper, G. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918).
+    Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918).
     """
     
     def __init__(self,
                  output_type: Union[str, Sequence[str]] = 'weights',
-                 recurrent_layer_sizes: Optional[Sequence[int]] = None,
-                 std_hidden_layer_sizes: Optional[Sequence[int]] = None,
+                 recurrent_layer_sizes: Sequence[int] = (16,),
+                 std_hidden_layer_sizes: Sequence[int] = (8,),
                  recurrent_cell: str = 'GRU',
                  name: Optional[str] = None,
                  **kwargs):
@@ -132,10 +135,15 @@ class CompactRIEnetLayer(layers.Layer):
         ----------
         output_type : Union[str, Sequence[str]], default 'weights'
             Requested output component(s).
-        recurrent_layer_sizes : Sequence[int], optional
-            Hidden sizes of the recurrent cleaning block.
-        std_hidden_layer_sizes : Sequence[int], optional
-            Hidden sizes of the dense marginal-volatility block.
+        recurrent_layer_sizes : Sequence[int], optional (default (16,))
+            Hidden sizes of the recurrent cleaning block (defaults to [16]).
+            If multiple integers are supplied (for example [32, 16]) the recurrent
+            block will create multiple hidden layers applied in sequence: first 32 units,
+            then 16 units.
+        std_hidden_layer_sizes : Sequence[int], optional (default (8,))
+            Hidden sizes of the dense marginal-volatility block (defaults to [8]).
+            A sequence such as [64, 8] will be interpreted as two dense hidden layers
+            with 64 then 8 units respectively.
         recurrent_cell : str, default 'GRU'
             Type of recurrent cell to use ('GRU' or 'LSTM').
         name : str, optional
@@ -182,7 +190,8 @@ class CompactRIEnetLayer(layers.Layer):
         self.output_type = components[0] if len(components) == 1 else tuple(components)
 
         if recurrent_layer_sizes is None:
-            recurrent_layer_sizes = [18]
+            # backward-compatible fallback if caller passes None
+            recurrent_layer_sizes = [16]
         else:
             recurrent_layer_sizes = list(recurrent_layer_sizes)
             if not recurrent_layer_sizes:
