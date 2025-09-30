@@ -1,10 +1,10 @@
-# Compact-RIEnet: A Compact Rotational Invariant Estimator Network for GMV Optimisation
+# Compact-RIEnet: A Compact Rotational Invariant Estimator Network for GMV Optimization
 
 [![PyPI version](https://img.shields.io/pypi/v/compact-rienet.svg)](https://pypi.org/project/compact-rienet/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Compact-RIEnet implements a **parameter-efficient, end-to-end neural estimator** for **global minimum-variance (GMV)** portfolios. The architecture couples a **five-parameter lag-kernel** with a **bidirectional GRU spectral denoiser** and a **marginal-volatility head** to produce cleaned inverse covariances and analytic GMV weights. By design, the number of learnable parameters is **independent of the look-back window length and the asset-universe size**, enabling immediate transfer across universes and sampling frequencies without retraining. The model is trained directly on a realized-variance objective and can export its cleaned covariance for constrained optimizations.
+Compact-RIEnet implements a **parameter-efficient, end-to-end neural estimator** for **Global Minimum-Variance (GMV)** portfolios. The architecture couples a **five-parameter lag-kernel** with a **bidirectional GRU spectral denoiser** and a **marginal-volatility head** to produce cleaned inverse covariances and analytic GMV weights. By design, the number of learnable parameters is **independent of the look-back window length and the asset-universe size**, enabling immediate transfer across universes and sampling frequencies without retraining. The model can be trained directly on a realized-variance objective and can export its cleaned covariance for constrained optimizations.
 
 ## Key Features
 
@@ -175,7 +175,7 @@ For software citation:
   title={Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation},
   author={Bongiorno, Christian},
   year={2025},
-  version={1.0.3},
+  version={1.0.6},
   url={https://github.com/bongiornoc/Compact-RIEnet}
 }
 ```
