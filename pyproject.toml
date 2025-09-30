@@ -1,10 +1,9 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "compact-rienet"
-version = "1.0.2"
 description = "A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -61,10 +60,10 @@ examples = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/author/compact-rienet"
-"Bug Tracker" = "https://github.com/author/compact-rienet/issues"
-"Documentation" = "https://github.com/author/compact-rienet"
-"Source Code" = "https://github.com/author/compact-rienet"
+"Homepage" = "https://github.com/bongiornoc/Compact-RIEnet"
+"Bug Tracker" = "https://github.com/bongiornoc/Compact-RIEnet/issues"
+"Documentation" = "https://github.com/bongiornoc/Compact-RIEnet"
+"Source Code" = "https://github.com/bongiornoc/Compact-RIEnet"
 
 [tool.setuptools]
 packages = ["compact_rienet"]

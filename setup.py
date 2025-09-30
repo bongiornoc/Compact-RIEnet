@@ -12,17 +12,17 @@ with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name="compact-rienet",
-    version="1.0.0",
-    author="Author Name",
-    author_email="author@email.com",
+    use_scm_version=True,
+    author="Christian Bongiorno",
+    author_email="christian.bongiorno@centralesupelec.fr",
     description="A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/author/compact-rienet",
+    url="https://github.com/bongiornoc/Compact-RIEnet",
     project_urls={
-        "Bug Tracker": "https://github.com/author/compact-rienet/issues",
-        "Documentation": "https://github.com/author/compact-rienet",
-        "Source Code": "https://github.com/author/compact-rienet",
+        "Bug Tracker": "https://github.com/bongiornoc/Compact-RIEnet/issues",
+        "Documentation": "https://github.com/bongiornoc/Compact-RIEnet",
+        "Source Code": "https://github.com/bongiornoc/Compact-RIEnet",
     },
     packages=find_packages(),
     classifiers=[

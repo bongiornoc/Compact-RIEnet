@@ -22,16 +22,19 @@ References:
 Contact Prof. Christian Bongiorno (<christian.bongiorno@centralesupelec.fr>) for calibrated weights or collaboration requests.
 
 Copyright (c) 2025
+Project URL: https://github.com/author/compact-rienet
 """
 
 from .layers import CompactRIEnetLayer
 from .losses import variance_loss_function
 from . import custom_layers, losses
+import importlib.metadata
 
-# Version information
-__version__ = "1.0.0"
+# Author information
 __author__ = "Christian Bongiorno"
 __email__ = "christian.bongiorno@centralesupelec.fr"
+
+__version__ = importlib.metadata.version("compact-rienet")
 
 # Public API
 __all__ = [
@@ -64,7 +67,7 @@ def print_citation():
         author={Christian Bongiorno},
         year={2025},
         version={1.0.0},
-        url={https://github.com/author/compact-rienet}
+        url={https://github.com/bongiornoc/Compact-RIEnet}
     }
     """
     print(citation)

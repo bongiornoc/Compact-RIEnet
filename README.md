@@ -25,8 +25,8 @@ pip install compact-rienet
 Or install from source:
 
 ```bash
-git clone https://github.com/author/compact-rienet.git
-cd compact-rienet
+git clone https://github.com/bongiornoc/Compact-RIEnet.git
+cd Compact-RIEnet
 pip install -e .
 ```
 
@@ -141,8 +141,8 @@ Paper defaults use a single bidirectional GRU layer with 16 units per direction 
 ## Development
 
 ```bash
-git clone https://github.com/author/compact-rienet.git
-cd compact-rienet
+git clone https://github.com/bongiornoc/Compact-RIEnet.git
+cd Compact-RIEnet
 pip install -e ".[dev]"
 pytest tests/
 ```
@@ -174,8 +174,8 @@ For software citation:
   title={Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation},
   author={Bongiorno, Christian},
   year={2025},
-  version={1.0.0},
-  url={https://github.com/author/compact-rienet}
+  version={1.0.2},
+  url={https://github.com/bongiornoc/Compact-RIEnet}
 }
 ```
 
@@ -190,6 +190,6 @@ compact_rienet.print_citation()
 
 For questions, issues, or contributions, please:
 
-- Open an issue on [GitHub](https://github.com/author/compact-rienet/issues)
+- Open an issue on [GitHub](https://github.com/bongiornoc/Compact-RIEnet/issues)
 - Check the documentation
 - Contact Prof. Christian Bongiorno (<christian.bongiorno@centralesupelec.fr>) for calibrated model weights or collaboration requests
