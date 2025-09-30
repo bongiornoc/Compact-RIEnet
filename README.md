@@ -1,6 +1,6 @@
 # Compact-RIEnet: A Compact Rotational Invariant Estimator Network for GMV Optimisation
 
-[![PyPI version](https://badge.fury.io/py/compact-rienet.svg)](https://badge.fury.io/py/compact-rienet)
+[![PyPI version](https://img.shields.io/pypi/v/compact-rienet.svg)](https://pypi.org/project/compact-rienet/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -174,7 +174,7 @@ For software citation:
   title={Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation},
   author={Bongiorno, Christian},
   year={2025},
-  version={1.0.2},
+  version={1.0.3},
   url={https://github.com/bongiornoc/Compact-RIEnet}
 }
 ```

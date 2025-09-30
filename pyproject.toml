@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "compact-rienet"
-version = "1.0.3"
+dynamic = ["version"]
 description = "A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -68,6 +68,9 @@ examples = [
 
 [tool.setuptools]
 packages = ["compact_rienet"]
+
+[tool.setuptools.dynamic]
+version = {attr = "compact_rienet.version.__version__"}
 
 [tool.black]
 line-length = 88

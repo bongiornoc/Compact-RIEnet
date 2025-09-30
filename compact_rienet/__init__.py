@@ -64,8 +64,8 @@ def print_citation():
         title={Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation},
         author={Christian Bongiorno},
         year={2025},
-        version={1.0.0},
+        version={VERSION},
         url={https://github.com/bongiornoc/Compact-RIEnet}
     }
     """
-    print(citation)
+    print(citation.replace("VERSION", __version__))
