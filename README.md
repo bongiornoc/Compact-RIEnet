@@ -4,15 +4,16 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Compact-RIEnet is a neural architecture purpose-built for **global minimum-variance (GMV)** portfolio optimisation. The model combines Rotational Invariant Estimator (RIE) techniques for covariance cleaning with recurrent neural networks, allowing it to capture both cross-sectional structure and temporal dynamics in financial data.
+Compact-RIEnet implements a **parameter-efficient, end-to-end neural estimator** for **global minimum-variance (GMV)** portfolios. The architecture couples a **five-parameter lag-kernel** with a **bidirectional GRU spectral denoiser** and a **marginal-volatility head** to produce cleaned inverse covariances and analytic GMV weights. By design, the number of learnable parameters is **independent of the look-back window length and the asset-universe size**, enabling immediate transfer across universes and sampling frequencies without retraining. The model is trained directly on a realized-variance objective and can export its cleaned covariance for constrained optimizations.
 
 ## Key Features
 
-- **GMV-First Design** – End-to-end training minimises realised portfolio variance
-- **RIE-Based Cleaning** – Rotational Invariant Estimators denoise the covariance spectrum for stable optimisation
-- **Dimension Agnostic** – Train on mixed asset universes and deploy on unseen sizes without architectural changes
-- **Configurable Recurrent Core** – Switch between GRU/LSTM cleaners and customise hidden stacks while retaining paper defaults
-- **Professional Implementation** – Comprehensive documentation, type hints, and test coverage
+- **End-to-End Variance Objective** – Trains on the realized out-of-sample variance, yielding GMV weights analytically from the learned inverse covariance.
+- **Parameter Efficiency** – Fixed-size modules (5-parameter lag kernel; BiGRU eigencleaning; lightweight volatility head) keep the model at ≈2k parameters.
+- **Size-Invariant Design** – Complexity does not scale with look-back length or cross-sectional dimension; deploy on new universes without architecture changes.
+- **RIE-Style Covariance Cleaning** – Rotation-invariant mapping of the correlation spectrum with a BiGRU (16 units per direction by default).
+- **Practical Outputs** – Retrieve GMV weights and the cleaned precision/covariance; the latter can be plugged into long-only QP solvers when needed.
+- **Reproducible Defaults** – TensorFlow/Keras reference implementation with paper-consistent hyperparameters and tests.
 
 ## Installation
 
