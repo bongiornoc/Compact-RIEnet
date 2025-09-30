@@ -4,16 +4,25 @@ Setup script for Compact-RIEnet package.
 
 from setuptools import setup, find_packages
 import os
-from compact_rienet.version import __version__
 
 # Read the contents of README file
 this_directory = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
+# Read version from version.py file
+def read_version():
+    version_file = os.path.join(this_directory, 'compact_rienet', 'version.py')
+    with open(version_file, 'r') as f:
+        version_content = f.read()
+    version_line = [line for line in version_content.split('\n') if line.startswith('__version__')]
+    if version_line:
+        return version_line[0].split('=')[1].strip().strip('"').strip("'")
+    raise RuntimeError("Unable to find version string.")
+
 setup(
     name="compact-rienet",
-    version=__version__,
+    version=read_version(),
     author="Christian Bongiorno",
     author_email="christian.bongiorno@centralesupelec.fr",
     description="A Compact Recurrent-Invariant Eigenvalue Network for Portfolio Optimization",
