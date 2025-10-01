@@ -360,13 +360,13 @@ class CompactRIEnetLayer(layers.Layer):
         std, mean = self.std_layer(input_transformed)
         
         # Standardize returns
-        returns = (input_transformed - mean) / std
+        zscores = (input_transformed - mean) / std
         
-        # Compute covariance matrix
-        covariance_matrix = self.covariance_layer(returns)
+        # Compute correlation matrix
+        correlation_matrix = self.covariance_layer(zscores)
         
         # Eigenvalue decomposition
-        eigenvalues, eigenvectors = self.spectral_decomp(covariance_matrix)
+        eigenvalues, eigenvectors = self.spectral_decomp(correlation_matrix)
         
         # Add dimensional features
         eigenvalues_enhanced = self.dimension_aware([eigenvalues, scaled_inputs])
@@ -386,7 +386,7 @@ class CompactRIEnetLayer(layers.Layer):
 
         # Build inverse correlation matrix (Eq. 13-14 of the paper)
         inverse_correlation = self.eigen_product(
-            transformed_eigenvalues, eigenvectors
+            transformed_eigenvalues, eigenvectors, scaling_factor='inverse'
         )
 
         # Combine with marginal inverse volatilities to obtain Σ^{-1}
