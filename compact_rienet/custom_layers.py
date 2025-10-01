@@ -15,6 +15,8 @@ Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25)
 Copyright (c) 2025
 """
 
+import math
+
 import tensorflow as tf
 from keras import backend as K
 from keras import layers, initializers
@@ -801,7 +803,10 @@ class LagTransformLayer(layers.Layer):
 
     def _inv_softplus(self, y: float) -> float:
         """Inverse softplus function for parameter initialization."""
-        return tf.math.log(tf.math.expm1(y))
+        y = float(y)
+        if y <= 0.0:
+            y = max(y, 1e-12)
+        return math.log(math.expm1(y))
 
     def _add_param(self, name: str, target: float) -> tf.Variable:
         """Add a learnable parameter with appropriate initialization."""
@@ -810,8 +815,9 @@ class LagTransformLayer(layers.Layer):
         if self.warm_start:
             init = initializers.Constant(mean_raw)
         else:
-            # Add ±5% noise in raw space
-            init = initializers.RandomNormal(mean_raw, 0.05 * tf.math.abs(mean_raw))
+            # Add ±5% noise in raw space with a minimum scale for stability
+            noise_scale = max(0.05 * abs(mean_raw), 1e-6)
+            init = initializers.RandomNormal(mean_raw, noise_scale)
 
         return self.add_weight(
             shape=(), 
