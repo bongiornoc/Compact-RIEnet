@@ -282,7 +282,7 @@ class CompactRIEnetLayer(layers.Layer):
         
         # Matrix reconstruction (see Eq. 13-15)
         self.eigen_product = EigenProductLayer(
-            scaling_factor='none',
+            scaling_factor='inverse',
             name=f"{self.name}_eigen_product"
         )
 
@@ -386,7 +386,7 @@ class CompactRIEnetLayer(layers.Layer):
 
         # Build inverse correlation matrix (Eq. 13-14 of the paper)
         inverse_correlation = self.eigen_product(
-            transformed_eigenvalues, eigenvectors, scaling_factor='inverse'
+            transformed_eigenvalues, eigenvectors
         )
 
         # Combine with marginal inverse volatilities to obtain Σ^{-1}
