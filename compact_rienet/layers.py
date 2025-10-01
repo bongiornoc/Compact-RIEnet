@@ -58,9 +58,9 @@ class CompactRIEnetLayer(layers.Layer):
     ----------
     output_type : Union[str, Sequence[str]], default 'weights'
         Component(s) to return. Each entry must belong to
-        {'weights', 'precision', 'covariance'} or the special string 'all'. When multiple
-        components are requested a dictionary mapping component name to tensor is
-        returned.
+        {'weights', 'precision', 'covariance', 'input_transformed'} or the special string
+        'all'. When multiple components are requested a dictionary mapping component name
+        to tensor is returned.
     recurrent_layer_sizes : Sequence[int], optional
         Hidden sizes of the recurrent cleaning block. Defaults to [16] matching the
         compact GMV network in the paper. If a sequence with multiple integers is
@@ -73,6 +73,10 @@ class CompactRIEnetLayer(layers.Layer):
     recurrent_cell : str, default 'GRU'
         Recurrent cell family used inside the eigenvalue cleaning block. Accepted
         values are 'GRU' and 'LSTM'.
+    normalize_transformed_std : bool, default True
+        Whether to normalize the transformed inverse volatilities so that the implied
+        covariance diagonal is centred on 1. Disable only when the network is not trained
+        end-to-end on the GMV objective.
     name : str, optional
         Name of the Keras layer instance.
     **kwargs : dict
@@ -88,6 +92,7 @@ class CompactRIEnetLayer(layers.Layer):
     Depends on ``output_type``:
         - 'weights' -> (batch_size, n_stocks, 1)
         - 'precision' or 'covariance' -> (batch_size, n_stocks, n_stocks)
+        - 'input_transformed' -> (batch_size, n_stocks, n_days)
         - Multiple components -> ``dict`` mapping component name to the shapes above
 
     Notes
@@ -126,6 +131,7 @@ class CompactRIEnetLayer(layers.Layer):
                  recurrent_layer_sizes: Sequence[int] = (16,),
                  std_hidden_layer_sizes: Sequence[int] = (8,),
                  recurrent_cell: str = 'GRU',
+                 normalize_transformed_std: bool = True,
                  name: Optional[str] = None,
                  **kwargs):
         """
@@ -153,7 +159,7 @@ class CompactRIEnetLayer(layers.Layer):
         """
         super().__init__(name=name, **kwargs)
 
-        allowed_outputs = ('weights', 'precision', 'covariance')
+        allowed_outputs = ('weights', 'precision', 'covariance', 'input_transformed')
         self._output_config = output_type if isinstance(output_type, str) else list(output_type)
 
         if isinstance(output_type, str):
@@ -162,7 +168,7 @@ class CompactRIEnetLayer(layers.Layer):
             else:
                 if output_type not in allowed_outputs:
                     raise ValueError(
-                        "output_type must be one of 'weights', 'precision', 'covariance', or 'all'"
+                        "output_type must be one of 'weights', 'precision', 'covariance', 'input_transformed', or 'all'"
                     )
                 components = [output_type]
         else:
@@ -176,7 +182,7 @@ class CompactRIEnetLayer(layers.Layer):
                     continue
                 if entry not in allowed_outputs:
                     raise ValueError(
-                        "All requested outputs must be in {'weights', 'precision', 'covariance', 'all'}"
+                        "All requested outputs must be in {'weights', 'precision', 'covariance', 'input_transformed', 'all'}"
                     )
                 expanded.append(entry)
             seen = set()
@@ -221,6 +227,7 @@ class CompactRIEnetLayer(layers.Layer):
         self._direction = 'bidirectional'
         self._dimensional_features = ['n_stocks', 'n_days', 'q']
         self._annualization_factor = 252.0
+        self._normalize_std = bool(normalize_transformed_std)
         self.input_spec = layers.InputSpec(ndim=3)
         
         # Initialize component layers
@@ -274,12 +281,15 @@ class CompactRIEnetLayer(layers.Layer):
             name=f"{self.name}_std_transform"
         )
         
-        self.std_normalization = CustomNormalizationLayer(
-            axis=-2,
-            mode='inverse',
-            inverse_power=2.0,
-            name=f"{self.name}_std_norm"
-        )
+        if self._normalize_std:
+            self.std_normalization = CustomNormalizationLayer(
+                axis=-2,
+                mode='inverse',
+                inverse_power=2.0,
+                name=f"{self.name}_std_norm"
+            )
+        else:
+            self.std_normalization = None
         
         # Matrix reconstruction (see Eq. 13-15)
         self.eigen_product = EigenProductLayer(
@@ -287,7 +297,12 @@ class CompactRIEnetLayer(layers.Layer):
             name=f"{self.name}_eigen_product"
         )
 
-        self.inverse_scale_outer = CovarianceLayer(
+        self.correlation_product = EigenProductLayer(
+            scaling_factor='direct',
+            name=f"{self.name}_correlation"
+        )
+
+        self.outer_product = CovarianceLayer(
             normalize=False,
             name=f"{self.name}_inverse_scale_outer"
         )
@@ -324,9 +339,11 @@ class CompactRIEnetLayer(layers.Layer):
         self.dimension_aware.build([eigenvalues_shape, input_shape])
         self.eigenvalue_transform.build(enhanced_eigen_shape)
         self.std_transform.build(std_shape)
-        self.std_normalization.build(std_shape)
+        if self.std_normalization is not None:
+            self.std_normalization.build(std_shape)
         self.eigen_product.build([eigenvalues_vector_shape, covariance_shape])
-        self.inverse_scale_outer.build(std_shape)
+        self.correlation_product.build([eigenvalues_vector_shape, covariance_shape])
+        self.outer_product.build(std_shape)
         self.portfolio_weights.build(covariance_shape)
 
         super().build(input_shape)
@@ -373,41 +390,60 @@ class CompactRIEnetLayer(layers.Layer):
         eigenvalues_enhanced = self.dimension_aware([eigenvalues, scaled_inputs])
         
         # Transform eigenvalues with recurrent network
-        transformed_eigenvalues = self.eigenvalue_transform(eigenvalues_enhanced)
-        spectrum_epsilon = tf.cast(tf.keras.backend.epsilon(), dtype=transformed_eigenvalues.dtype)
-        transformed_eigenvalues = tf.maximum(transformed_eigenvalues, spectrum_epsilon)
+        transformed_inverse_eigenvalues = self.eigenvalue_transform(eigenvalues_enhanced)
+        spectrum_epsilon = tf.cast(tf.keras.backend.epsilon(), dtype=transformed_inverse_eigenvalues.dtype)
+        transformed_inverse_eigenvalues = tf.maximum(transformed_inverse_eigenvalues, spectrum_epsilon)
 
         # Transform standard deviations
-        transformed_std = self.std_transform(std)
-        transformed_std = self.std_normalization(transformed_std)
-        transformed_std = tf.maximum(
-            transformed_std,
-            tf.cast(tf.keras.backend.epsilon(), dtype=transformed_std.dtype)
+        transformed_inverse_std = self.std_transform(std)
+        if self.std_normalization is not None:
+            transformed_inverse_std = self.std_normalization(transformed_inverse_std)
+        transformed_inverse_std = tf.maximum(
+            transformed_inverse_std,
+            tf.cast(tf.keras.backend.epsilon(), dtype=transformed_inverse_std.dtype)
         )
 
         # Build inverse correlation matrix (Eq. 13-14 of the paper)
         inverse_correlation = self.eigen_product(
+            transformed_inverse_eigenvalues, eigenvectors
+        )
+
+        transformed_eigenvalues = tf.math.reciprocal(transformed_inverse_eigenvalues)
+        transformed_eigenvalues = tf.maximum(
+            transformed_eigenvalues,
+            tf.cast(tf.keras.backend.epsilon(), dtype=transformed_eigenvalues.dtype)
+        )
+        correlation_matrix = self.correlation_product(
             transformed_eigenvalues, eigenvectors
+        )
+        correlation_matrix = 0.5 * (
+            correlation_matrix + tf.linalg.matrix_transpose(correlation_matrix)
         )
 
         # Combine with marginal inverse volatilities to obtain Σ^{-1}
-        inverse_volatility = self.inverse_scale_outer(transformed_std)
-        precision_matrix = inverse_correlation * inverse_volatility
+        inverse_volatility_matrix = self.outer_product(transformed_inverse_std)
+        precision_matrix = inverse_correlation * inverse_volatility_matrix
         precision_matrix = 0.5 * (precision_matrix + tf.linalg.matrix_transpose(precision_matrix))
 
-        results = {}
+        transformed_std = tf.math.reciprocal(transformed_inverse_std)
+        transformed_std = tf.maximum(transformed_std, tf.cast(tf.keras.backend.epsilon(), dtype=transformed_std.dtype))
+        volatility_matrix = self.outer_product(transformed_std)
+        covariance = correlation_matrix * volatility_matrix
+        covariance = 0.5 * (covariance + tf.linalg.matrix_transpose(covariance))
 
+        results = {}
         if 'precision' in self.output_components:
             results['precision'] = precision_matrix
 
         if 'covariance' in self.output_components:
-            covariance = tf.linalg.pinv(precision_matrix)
-            covariance = 0.5 * (covariance + tf.linalg.matrix_transpose(covariance))
             results['covariance'] = covariance
 
         if 'weights' in self.output_components:
             weights = self.portfolio_weights(precision_matrix)
             results['weights'] = weights
+
+        if 'input_transformed' in self.output_components:
+            results['input_transformed'] = input_transformed
 
         if len(self.output_components) == 1:
             return results[self.output_components[0]]
@@ -429,6 +465,7 @@ class CompactRIEnetLayer(layers.Layer):
             'recurrent_layer_sizes': list(self._recurrent_layer_sizes),
             'std_hidden_layer_sizes': list(self._std_hidden_layer_sizes),
             'recurrent_cell': self._recurrent_model,
+            'normalize_transformed_std': self._normalize_std,
         })
         return config
     
@@ -464,11 +501,13 @@ class CompactRIEnetLayer(layers.Layer):
             Output shape
         """
         input_shape = tf.TensorShape(input_shape).as_list()
-        batch_size, n_stocks, _ = input_shape
+        batch_size, n_stocks, n_days = input_shape
 
         def shape_for(component: str) -> Tuple[int, ...]:
             if component == 'weights':
                 return (batch_size, n_stocks, 1)
+            if component == 'input_transformed':
+                return (batch_size, n_stocks, n_days)
             return (batch_size, n_stocks, n_stocks)
 
         if len(self.output_components) == 1:

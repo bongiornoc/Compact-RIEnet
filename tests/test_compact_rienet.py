@@ -320,7 +320,7 @@ class TestCustomLayers:
         assert reconstructed.shape == expected_shape
 
     def test_precision_normalization_diagonal_mean(self):
-        """Normalized precision should produce unit diagonal covariance on average."""
+        """Normalized precision keeps covariance diagonal centred on one."""
         batch_size, n_assets = 2, 6
         # Use identity eigenvectors for clarity
         eigenvectors = tf.eye(n_assets, batch_shape=[batch_size])
@@ -331,8 +331,15 @@ class TestCustomLayers:
         )
         cleaned_eigenvalues = tf.squeeze(eigen_normalizer(raw_eigenvalues), axis=-1)
 
-        eigen_layer = EigenProductLayer(scaling_factor='none', name='test_precision_reconstruct')
-        inverse_correlation = eigen_layer(cleaned_eigenvalues, eigenvectors)
+        inverse_layer = EigenProductLayer(scaling_factor='inverse', name='test_precision_reconstruct')
+        inverse_correlation = inverse_layer(cleaned_eigenvalues, eigenvectors)
+
+        correlation_layer = EigenProductLayer(scaling_factor='direct', name='test_correlation_reconstruct')
+        eps = tf.cast(1e-6, cleaned_eigenvalues.dtype)
+        cleaned_inverse = tf.math.reciprocal(tf.maximum(cleaned_eigenvalues, eps))
+        correlation = correlation_layer(cleaned_inverse, eigenvectors)
+        diag_corr = tf.linalg.diag_part(correlation)
+        assert float(tf.reduce_max(tf.abs(diag_corr - 1.0)).numpy()) < 1e-6
 
         raw_std = tf.random.uniform((batch_size, n_assets, 1), 0.4, 2.0)
         std_normalizer = CustomNormalizationLayer(
@@ -346,10 +353,36 @@ class TestCustomLayers:
         precision = inverse_correlation * inverse_vol
         covariance = tf.linalg.inv(precision)
         diag = tf.linalg.diag_part(covariance)
-        diag_mean = tf.reduce_mean(diag, axis=-1)
+        mean_diag = tf.reduce_mean(diag)
+        assert float(tf.math.abs(mean_diag - 1.0).numpy()) < 1e-4
 
-        diff = tf.math.abs(diag_mean - 1.0)
-        assert tf.reduce_max(diff) < 1e-4
+    def test_compact_layer_input_transformed_output(self):
+        """Layer can emit transformed inputs when requested."""
+        layer = CompactRIEnetLayer(output_type=['input_transformed'],
+                                   normalize_transformed_std=False,
+                                   name='test_input_transformed')
+        batch, n_assets, n_days = 2, 3, 5
+        inputs = tf.random.normal((batch, n_assets, n_days))
+        outputs = layer(inputs)
+        assert outputs.shape == (batch, n_assets, n_days)
+
+    def test_compact_layer_covariance_unit_diag_mean(self):
+        """Default configuration keeps the covariance diagonal centred on one."""
+        layer = CompactRIEnetLayer(output_type=['covariance'],
+                                   name='test_covariance_unit')
+        batch, n_assets, n_days = 1, 4, 6
+        inputs = tf.random.normal((batch, n_assets, n_days))
+        covariance = layer(inputs)
+        diag = tf.linalg.diag_part(covariance)
+        mean_diag = tf.reduce_mean(diag)
+        assert float(tf.math.abs(mean_diag - 1.0).numpy()) < 1e-4
+
+    def test_compact_layer_skip_std_normalization(self):
+        """Disabling std normalization leaves the layer without the normalizer."""
+        layer = CompactRIEnetLayer(output_type='precision',
+                                   normalize_transformed_std=False,
+                                   name='test_no_std_norm')
+        assert layer.std_normalization is None
     
     def test_normalized_sum(self):
         """Test NormalizedSum layer."""

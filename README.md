@@ -92,10 +92,25 @@ weights = CompactRIEnetLayer(output_type='weights')(returns)
 # Precision matrix only
 precision_matrix = CompactRIEnetLayer(output_type='precision')(returns)
 
-# Both precision and covariance in one pass
-outputs = CompactRIEnetLayer(output_type=['precision', 'covariance'])(returns)
+# Precision, covariance, and the lag-transformed inputs in one pass
+outputs = CompactRIEnetLayer(
+    output_type=['precision', 'covariance', 'input_transformed']
+)(returns)
 precision_matrix = outputs['precision']
 covariance_matrix = outputs['covariance']
+lagged_inputs = outputs['input_transformed']
+
+# Optional: disable inverse-vol normalisation (use only outside end-to-end GMV training)
+raw_precision = CompactRIEnetLayer(
+    output_type='precision',
+    normalize_transformed_std=False
+)(returns)
+
+> ⚠️ When Compact-RIEnet is trained end-to-end on the GMV variance loss, leave
+> `normalize_transformed_std=True` (the default). The loss is invariant to global
+> covariance rescalings and the layer keeps the implied variance scale centred
+> around one. Disable the normalisation only when using alternative objectives
+> where the absolute volatility scale must be preserved.
 ```
 
 ## Loss Function
@@ -175,7 +190,7 @@ For software citation:
   title={Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation},
   author={Bongiorno, Christian},
   year={2025},
-  version={1.0.6},
+  version={1.1.3},
   url={https://github.com/bongiornoc/Compact-RIEnet}
 }
 ```
