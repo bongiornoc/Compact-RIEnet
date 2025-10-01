@@ -359,7 +359,7 @@ class TestCustomLayers:
     def test_compact_layer_input_transformed_output(self):
         """Layer can emit transformed inputs when requested."""
         layer = CompactRIEnetLayer(output_type=['input_transformed'],
-                                   normalize_transformed_std=False,
+                                   normalize_transformed_variance=False,
                                    name='test_input_transformed')
         batch, n_assets, n_days = 2, 3, 5
         inputs = tf.random.normal((batch, n_assets, n_days))
@@ -377,10 +377,10 @@ class TestCustomLayers:
         mean_diag = tf.reduce_mean(diag)
         assert float(tf.math.abs(mean_diag - 1.0).numpy()) < 1e-4
 
-    def test_compact_layer_skip_std_normalization(self):
-        """Disabling std normalization leaves the layer without the normalizer."""
+    def test_compact_layer_skip_variance_normalization(self):
+        """Disabling variance normalization leaves the layer without the normalizer."""
         layer = CompactRIEnetLayer(output_type='precision',
-                                   normalize_transformed_std=False,
+                                   normalize_transformed_variance=False,
                                    name='test_no_std_norm')
         assert layer.std_normalization is None
     

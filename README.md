@@ -100,18 +100,18 @@ precision_matrix = outputs['precision']
 covariance_matrix = outputs['covariance']
 lagged_inputs = outputs['input_transformed']
 
-# Optional: disable inverse-vol normalisation (use only outside end-to-end GMV training)
-raw_precision = CompactRIEnetLayer(
-    output_type='precision',
-    normalize_transformed_std=False
+# Optional: disable variance normalisation (do not use it with end-to-end GMV training)
+raw_covariance = CompactRIEnetLayer(
+    output_type='covariance',
+    normalize_transformed_variance=False
 )(returns)
+```
 
 > ⚠️ When Compact-RIEnet is trained end-to-end on the GMV variance loss, leave
-> `normalize_transformed_std=True` (the default). The loss is invariant to global
+> `normalize_transformed_variance=True` (the default). The loss is invariant to global
 > covariance rescalings and the layer keeps the implied variance scale centred
 > around one. Disable the normalisation only when using alternative objectives
 > where the absolute volatility scale must be preserved.
-```
 
 ## Loss Function
 

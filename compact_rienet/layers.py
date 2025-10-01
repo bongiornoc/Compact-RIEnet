@@ -73,10 +73,10 @@ class CompactRIEnetLayer(layers.Layer):
     recurrent_cell : str, default 'GRU'
         Recurrent cell family used inside the eigenvalue cleaning block. Accepted
         values are 'GRU' and 'LSTM'.
-    normalize_transformed_std : bool, default True
+    normalize_transformed_variance : bool, default True
         Whether to normalize the transformed inverse volatilities so that the implied
-        covariance diagonal is centred on 1. Disable only when the network is not trained
-        end-to-end on the GMV objective.
+        covariance diagonal (variance) is centred on 1. Disable only when the network is
+        not trained end-to-end on the GMV objective.
     name : str, optional
         Name of the Keras layer instance.
     **kwargs : dict
@@ -131,7 +131,7 @@ class CompactRIEnetLayer(layers.Layer):
                  recurrent_layer_sizes: Sequence[int] = (16,),
                  std_hidden_layer_sizes: Sequence[int] = (8,),
                  recurrent_cell: str = 'GRU',
-                 normalize_transformed_std: bool = True,
+                 normalize_transformed_variance: bool = True,
                  name: Optional[str] = None,
                  **kwargs):
         """
@@ -227,7 +227,7 @@ class CompactRIEnetLayer(layers.Layer):
         self._direction = 'bidirectional'
         self._dimensional_features = ['n_stocks', 'n_days', 'q']
         self._annualization_factor = 252.0
-        self._normalize_std = bool(normalize_transformed_std)
+        self._normalize_variance = bool(normalize_transformed_variance)
         self.input_spec = layers.InputSpec(ndim=3)
         
         # Initialize component layers
@@ -281,7 +281,7 @@ class CompactRIEnetLayer(layers.Layer):
             name=f"{self.name}_std_transform"
         )
         
-        if self._normalize_std:
+        if self._normalize_variance:
             self.std_normalization = CustomNormalizationLayer(
                 axis=-2,
                 mode='inverse',
@@ -465,7 +465,7 @@ class CompactRIEnetLayer(layers.Layer):
             'recurrent_layer_sizes': list(self._recurrent_layer_sizes),
             'std_hidden_layer_sizes': list(self._std_hidden_layer_sizes),
             'recurrent_cell': self._recurrent_model,
-            'normalize_transformed_std': self._normalize_std,
+            'normalize_transformed_variance': self._normalize_variance,
         })
         return config
     
