@@ -352,6 +352,19 @@ class DeepLayer(layers.Layer):
             name=f"{self.name}_output"
         )
 
+    def build(self, input_shape: Tuple[int, ...]) -> None:
+        """Build the dense and dropout sublayers."""
+        input_shape = tf.TensorShape(input_shape)
+        current_shape = input_shape
+
+        for dense, dropout in zip(self.hidden_layers, self.dropouts):
+            dense.build(current_shape)
+            current_shape = dense.compute_output_shape(current_shape)
+            dropout.build(current_shape)
+
+        self.final_dense.build(current_shape)
+        super().build(input_shape)
+
     def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
         """
         Forward pass through the network.
@@ -495,6 +508,18 @@ class DeepRecurrentLayer(layers.Layer):
             dropout_rate=dropout,
             name=f"{self.name}_finaldeep"
         )       
+
+    def build(self, input_shape: Tuple[int, ...]) -> None:
+        """Build the recurrent stack and final dense projection."""
+        input_shape = tf.TensorShape(input_shape)
+        current_shape = input_shape
+
+        for rnn_layer in self.recurrent_layers:
+            rnn_layer.build(current_shape)
+            current_shape = rnn_layer.compute_output_shape(current_shape)
+
+        self.final_deep_dense.build(current_shape)
+        super().build(input_shape)
 
     def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
         """
