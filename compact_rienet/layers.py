@@ -221,10 +221,11 @@ class CompactRIEnetLayer(layers.Layer):
         self._direction = 'bidirectional'
         self._dimensional_features = ['n_stocks', 'n_days', 'q']
         self._annualization_factor = 252.0
+        self.input_spec = layers.InputSpec(ndim=3)
         
         # Initialize component layers
         self._build_layers()
-        
+
     def _build_layers(self):
         """Build the internal layers of the architecture."""
         # Input transformation and preprocessing
@@ -296,6 +297,38 @@ class CompactRIEnetLayer(layers.Layer):
             axis_2=-2, 
             name=f"{self.name}_portfolio_weights"
         )
+
+    def build(self, input_shape: Tuple[int, int, int]) -> None:
+        """Build sub-layers once input dimensionality is known."""
+        input_shape = tf.TensorShape(input_shape)
+        if input_shape.rank != 3:
+            raise ValueError(
+                "CompactRIEnetLayer expects inputs with shape (batch, n_stocks, n_days)."
+            )
+
+        batch = input_shape[0]
+        n_stocks = input_shape[1]
+
+        covariance_shape = tf.TensorShape([batch, n_stocks, n_stocks])
+        eigenvalues_shape = tf.TensorShape([batch, n_stocks, 1])
+        enhanced_features = 1 + len(self._dimensional_features)
+        enhanced_eigen_shape = tf.TensorShape([batch, n_stocks, enhanced_features])
+        std_shape = tf.TensorShape([batch, n_stocks, 1])
+        eigenvalues_vector_shape = tf.TensorShape([batch, n_stocks])
+
+        self.lag_transform.build(input_shape)
+        self.std_layer.build(input_shape)
+        self.covariance_layer.build(input_shape)
+        self.spectral_decomp.build(covariance_shape)
+        self.dimension_aware.build([eigenvalues_shape, input_shape])
+        self.eigenvalue_transform.build(enhanced_eigen_shape)
+        self.std_transform.build(std_shape)
+        self.std_normalization.build(std_shape)
+        self.eigen_product.build([eigenvalues_vector_shape, covariance_shape])
+        self.inverse_scale_outer.build(std_shape)
+        self.portfolio_weights.build(covariance_shape)
+
+        super().build(input_shape)
         
     def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
         """
