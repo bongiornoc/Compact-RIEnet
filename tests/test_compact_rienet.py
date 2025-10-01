@@ -305,19 +305,51 @@ class TestCustomLayers:
     def test_eigen_product_layer(self):
         """Test EigenProductLayer."""
         layer = EigenProductLayer(scaling_factor='none', name='test_eigen_product')
-        
+
         batch_size, n_assets = 4, 5
         eigenvalues = tf.random.normal((batch_size, n_assets))
         eigenvectors = tf.random.normal((batch_size, n_assets, n_assets))
-        
+
         # Make eigenvectors orthogonal (approximately)
         eigenvectors, _ = tf.linalg.qr(eigenvectors)
-        
+
         reconstructed = layer(eigenvalues, eigenvectors)
-        
+
         # Should reconstruct matrix of same size
         expected_shape = (batch_size, n_assets, n_assets)
         assert reconstructed.shape == expected_shape
+
+    def test_precision_normalization_diagonal_mean(self):
+        """Normalized precision should produce unit diagonal covariance on average."""
+        batch_size, n_assets = 2, 6
+        # Use identity eigenvectors for clarity
+        eigenvectors = tf.eye(n_assets, batch_shape=[batch_size])
+
+        raw_eigenvalues = tf.random.uniform((batch_size, n_assets, 1), 0.5, 1.5)
+        eigen_normalizer = CustomNormalizationLayer(
+            mode='inverse', axis=-2, inverse_power=1.0, name='test_eigen_norm'
+        )
+        cleaned_eigenvalues = tf.squeeze(eigen_normalizer(raw_eigenvalues), axis=-1)
+
+        eigen_layer = EigenProductLayer(scaling_factor='none', name='test_precision_reconstruct')
+        inverse_correlation = eigen_layer(cleaned_eigenvalues, eigenvectors)
+
+        raw_std = tf.random.uniform((batch_size, n_assets, 1), 0.4, 2.0)
+        std_normalizer = CustomNormalizationLayer(
+            mode='inverse', axis=-2, inverse_power=2.0, name='test_std_norm'
+        )
+        inverse_std = std_normalizer(raw_std)
+
+        scale_outer = CovarianceLayer(normalize=False, name='test_outer')
+        inverse_vol = scale_outer(inverse_std)
+
+        precision = inverse_correlation * inverse_vol
+        covariance = tf.linalg.inv(precision)
+        diag = tf.linalg.diag_part(covariance)
+        diag_mean = tf.reduce_mean(diag, axis=-1)
+
+        diff = tf.math.abs(diag_mean - 1.0)
+        assert tf.reduce_max(diff) < 1e-4
     
     def test_normalized_sum(self):
         """Test NormalizedSum layer."""

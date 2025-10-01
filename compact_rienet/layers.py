@@ -277,6 +277,7 @@ class CompactRIEnetLayer(layers.Layer):
         self.std_normalization = CustomNormalizationLayer(
             axis=-2,
             mode='inverse',
+            inverse_power=2.0,
             name=f"{self.name}_std_norm"
         )
         

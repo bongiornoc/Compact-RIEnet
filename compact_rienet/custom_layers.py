@@ -435,6 +435,9 @@ class DeepRecurrentLayer(layers.Layer):
         Type of RNN cell: 'LSTM' or 'GRU'
     normalize : str, optional
         Normalization mode: None, 'inverse', or 'sum'
+    normalize_inverse_power : float, default 1.0
+        Exponent used when ``normalize='inverse'``; ensures the normalized output
+        satisfies ``mean(x^{-normalize_inverse_power}) = 1`` along the sequence axis.
     name : str, optional
         Layer name
     """
@@ -442,7 +445,8 @@ class DeepRecurrentLayer(layers.Layer):
     def __init__(self, recurrent_layer_sizes: List[int], final_activation: str = "softplus", 
                  final_hidden_layer_sizes: List[int] = [], final_hidden_activation: str = "leaky_relu",
                  direction: str = 'bidirectional', dropout: float = 0., recurrent_dropout: float = 0.,
-                 recurrent_model: str = 'LSTM', normalize: Optional[str] = None, 
+                 recurrent_model: str = 'LSTM', normalize: Optional[str] = None,
+                 normalize_inverse_power: float = 1.0,
                  name: Optional[str] = None, **kwargs):
         if name is None:
             raise ValueError("DeepRecurrentLayer must have a name.")
@@ -460,6 +464,9 @@ class DeepRecurrentLayer(layers.Layer):
         if normalize not in [None, 'inverse', "sum"]:
             raise ValueError("normalize must be None, 'inverse', or 'sum'.")
         self.normalize = normalize
+        if self.normalize is not None and normalize_inverse_power <= 0:
+            raise ValueError("normalize_inverse_power must be positive when using inverse normalization.")
+        self.normalize_inverse_power = float(normalize_inverse_power)
 
         # Build recurrent layers
         RNN = getattr(layers, recurrent_model)
@@ -509,6 +516,17 @@ class DeepRecurrentLayer(layers.Layer):
             name=f"{self.name}_finaldeep"
         )       
 
+        if self.normalize is not None:
+            inverse_power = self.normalize_inverse_power if self.normalize == 'inverse' else 1.0
+            self._normalizer = CustomNormalizationLayer(
+                mode=self.normalize,
+                axis=-2,
+                inverse_power=inverse_power,
+                name=f"{self.name}_norm"
+            )
+        else:
+            self._normalizer = None
+
     def build(self, input_shape: Tuple[int, ...]) -> None:
         """Build the recurrent stack and final dense projection."""
         input_shape = tf.TensorShape(input_shape)
@@ -519,6 +537,11 @@ class DeepRecurrentLayer(layers.Layer):
             current_shape = rnn_layer.compute_output_shape(current_shape)
 
         self.final_deep_dense.build(current_shape)
+        final_shape = self.final_deep_dense.compute_output_shape(current_shape)
+
+        if self._normalizer is not None:
+            self._normalizer.build(final_shape)
+
         super().build(input_shape)
 
     def call(self, inputs: tf.Tensor, training: Optional[bool] = None) -> tf.Tensor:
@@ -543,12 +566,8 @@ class DeepRecurrentLayer(layers.Layer):
             
         outputs = self.final_deep_dense(x, training=training)
         
-        if self.normalize is not None:
-            outputs = CustomNormalizationLayer(
-                mode=self.normalize, 
-                axis=-2, 
-                name=f"{self.name}_norm"
-            )(outputs)
+        if self._normalizer is not None:
+            outputs = self._normalizer(outputs)
             
         return tf.squeeze(outputs, axis=-1)
     
@@ -563,7 +582,8 @@ class DeepRecurrentLayer(layers.Layer):
             'dropout': self.dropout,
             'recurrent_dropout': self.recurrent_dropout,
             'recurrent_model': self.recurrent_model,
-            'normalize': self.normalize
+            'normalize': self.normalize,
+            'normalize_inverse_power': self.normalize_inverse_power
         })
         return config
 
@@ -584,6 +604,9 @@ class CustomNormalizationLayer(layers.Layer):
         Axis along which to normalize
     epsilon : float, default 1e-6
         Numerical stability constant
+    inverse_power : float, default 1.0
+        Exponent used when ``mode='inverse'`` so that the normalization enforces
+        ``mean(x^{-inverse_power}) = 1`` along the target axis.
     name : str, optional
         Layer name
     """
@@ -592,6 +615,7 @@ class CustomNormalizationLayer(layers.Layer):
                  mode: str = 'sum',
                  axis: int = -2,
                  epsilon: float = 1e-6,
+                 inverse_power: float = 1.0,
                  name: Optional[str] = None,
                  **kwargs):
         if name is None:
@@ -600,6 +624,9 @@ class CustomNormalizationLayer(layers.Layer):
         self.mode = mode
         self.axis = axis
         self.epsilon = epsilon
+        if inverse_power <= 0:
+            raise ValueError("inverse_power must be positive")
+        self.inverse_power = float(inverse_power)
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         """
@@ -625,10 +652,11 @@ class CustomNormalizationLayer(layers.Layer):
             x = n * x / tf.maximum(denom_axis, epsilon)
         elif self.mode == 'inverse':
             x = tf.maximum(x, epsilon)
-            inv = tf.math.reciprocal(x)
+            inv = tf.math.pow(x, -self.inverse_power)
             inv_total = tf.reduce_sum(inv, axis=self.axis, keepdims=True)
             inv_normalized = n * inv / tf.maximum(inv_total, epsilon)
-            x = tf.math.reciprocal(tf.maximum(inv_normalized, epsilon))
+            power = tf.cast(-1.0 / self.inverse_power, dtype)
+            x = tf.math.pow(tf.maximum(inv_normalized, epsilon), power)
         
         return x
 
@@ -637,7 +665,8 @@ class CustomNormalizationLayer(layers.Layer):
         config.update({
             'mode': self.mode,
             'axis': self.axis,
-            'epsilon': float(self.epsilon)
+            'epsilon': float(self.epsilon),
+            'inverse_power': self.inverse_power
         })
         return config
 
