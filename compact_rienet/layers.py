@@ -32,6 +32,7 @@ from .custom_layers import (
     EigenProductLayer,
     NormalizedSum
 )
+from .dtype_utils import epsilon_for_dtype
 
 
 @tf.keras.utils.register_keras_serializable(package='compact_rienet')
@@ -391,7 +392,10 @@ class CompactRIEnetLayer(layers.Layer):
         
         # Transform eigenvalues with recurrent network
         transformed_inverse_eigenvalues = self.eigenvalue_transform(eigenvalues_enhanced)
-        spectrum_epsilon = tf.cast(tf.keras.backend.epsilon(), dtype=transformed_inverse_eigenvalues.dtype)
+        spectrum_epsilon = epsilon_for_dtype(
+            transformed_inverse_eigenvalues.dtype,
+            tf.keras.backend.epsilon(),
+        )
         transformed_inverse_eigenvalues = tf.maximum(transformed_inverse_eigenvalues, spectrum_epsilon)
 
         # Transform standard deviations
@@ -400,7 +404,10 @@ class CompactRIEnetLayer(layers.Layer):
             transformed_inverse_std = self.std_normalization(transformed_inverse_std)
         transformed_inverse_std = tf.maximum(
             transformed_inverse_std,
-            tf.cast(tf.keras.backend.epsilon(), dtype=transformed_inverse_std.dtype)
+            epsilon_for_dtype(
+                transformed_inverse_std.dtype,
+                tf.keras.backend.epsilon(),
+            )
         )
 
         # Build inverse correlation matrix (Eq. 13-14 of the paper)
@@ -411,7 +418,10 @@ class CompactRIEnetLayer(layers.Layer):
         transformed_eigenvalues = tf.math.reciprocal(transformed_inverse_eigenvalues)
         transformed_eigenvalues = tf.maximum(
             transformed_eigenvalues,
-            tf.cast(tf.keras.backend.epsilon(), dtype=transformed_eigenvalues.dtype)
+            epsilon_for_dtype(
+                transformed_eigenvalues.dtype,
+                tf.keras.backend.epsilon(),
+            )
         )
         correlation_matrix = self.correlation_product(
             transformed_eigenvalues, eigenvectors
@@ -426,7 +436,10 @@ class CompactRIEnetLayer(layers.Layer):
         precision_matrix = 0.5 * (precision_matrix + tf.linalg.matrix_transpose(precision_matrix))
 
         transformed_std = tf.math.reciprocal(transformed_inverse_std)
-        transformed_std = tf.maximum(transformed_std, tf.cast(tf.keras.backend.epsilon(), dtype=transformed_std.dtype))
+        transformed_std = tf.maximum(
+            transformed_std,
+            epsilon_for_dtype(transformed_std.dtype, tf.keras.backend.epsilon()),
+        )
         volatility_matrix = self.outer_product(transformed_std)
         covariance = correlation_matrix * volatility_matrix
         covariance = 0.5 * (covariance + tf.linalg.matrix_transpose(covariance))

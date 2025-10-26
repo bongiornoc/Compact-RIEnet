@@ -462,6 +462,30 @@ class TestIntegration:
         assert history.history['loss'][0] is not None
 
 
+class TestMixedPrecision:
+    """Tests ensuring the model works under mixed precision policies."""
+
+    def test_layer_forward_mixed_float16(self):
+        original_policy = tf.keras.mixed_precision.global_policy()
+        tf.keras.mixed_precision.set_global_policy('mixed_float16')
+        try:
+            layer = CompactRIEnetLayer(output_type=['weights', 'precision'],
+                                       name='test_mixed_precision')
+            batch_size, n_stocks, n_days = 2, 3, 12
+            inputs = tf.random.normal((batch_size, n_stocks, n_days))
+
+            outputs = layer(inputs)
+
+            assert isinstance(outputs, dict)
+            policy_dtype = tf.dtypes.as_dtype(
+                tf.keras.mixed_precision.global_policy().compute_dtype
+            )
+            assert outputs['weights'].dtype == policy_dtype
+            assert outputs['precision'].dtype == policy_dtype
+        finally:
+            tf.keras.mixed_precision.set_global_policy(original_policy)
+
+
 # Test fixtures and utilities
 @pytest.fixture
 def sample_returns():

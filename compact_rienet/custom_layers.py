@@ -20,7 +20,9 @@ import math
 import tensorflow as tf
 from keras import backend as K
 from keras import layers, initializers
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
+
+from .dtype_utils import ensure_float32, restore_dtype, epsilon_for_dtype
 
 
 @tf.keras.utils.register_keras_serializable(package='compact_rienet')
@@ -37,8 +39,6 @@ class StandardDeviationLayer(layers.Layer):
         Axis along which to compute statistics
     demean : bool, default False
         Whether to use an unbiased denominator (n-1)
-    epsilon : float, default 1e-6
-        Small value added for numerical stability
     name : str, optional
         Layer name
     """
@@ -46,7 +46,6 @@ class StandardDeviationLayer(layers.Layer):
     def __init__(self,
                  axis: int = 1,
                  demean: bool = False,
-                 epsilon: float = 1e-6,
                  name: Optional[str] = None,
                  **kwargs):
         if name is None:
@@ -54,7 +53,6 @@ class StandardDeviationLayer(layers.Layer):
         super().__init__(name=name, **kwargs)
         self.axis = axis
         self.demean = demean
-        self.epsilon = epsilon
 
     def call(self, x: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         """
@@ -71,7 +69,7 @@ class StandardDeviationLayer(layers.Layer):
             (standard_deviation, mean)
         """
         dtype = x.dtype
-        epsilon = tf.cast(self.epsilon, dtype)
+        epsilon = epsilon_for_dtype(dtype, self.epsilon)
 
         sample_size = tf.cast(tf.shape(x)[self.axis], dtype)
         sample_size = tf.maximum(sample_size, 1.0)
@@ -94,7 +92,6 @@ class StandardDeviationLayer(layers.Layer):
         config.update({
             'axis': self.axis,
             'demean': self.demean,
-            'epsilon': float(self.epsilon)
         })
         return config
 
@@ -140,7 +137,7 @@ class CovarianceLayer(layers.Layer):
             Covariance matrix
         """
         if self.normalize:
-            sample_size = tf.cast(tf.shape(returns)[-1], tf.float32) 
+            sample_size = tf.cast(tf.shape(returns)[-1], returns.dtype)
             covariance = tf.matmul(returns, returns, transpose_b=True) / sample_size
         else:
             covariance = tf.matmul(returns, returns, transpose_b=True)
@@ -192,10 +189,14 @@ class SpectralDecompositionLayer(layers.Layer):
         tuple of tf.Tensor
             (eigenvalues, eigenvectors) where eigenvalues have shape [..., n, 1]
         """
-        eigenvalues, eigenvectors = tf.linalg.eigh(covariance_matrix)
+        covariance32, original_dtype = ensure_float32(covariance_matrix)
+        eigenvalues, eigenvectors = tf.linalg.eigh(covariance32)
         # Expand dims to make eigenvalues [..., n, 1] for compatibility
         eigenvalues = tf.expand_dims(eigenvalues, axis=-1)
-        return eigenvalues, eigenvectors
+        return (
+            restore_dtype(eigenvalues, original_dtype),
+            restore_dtype(eigenvectors, original_dtype)
+        )
 
     def get_config(self) -> dict:
         return super().get_config()
@@ -224,8 +225,9 @@ class DimensionAwareLayer(layers.Layer):
         super().__init__(name=name, **kwargs)
         self.features = features
 
-    def _set_attribute(self, value: tf.Tensor, shape: tf.Tensor) -> tf.Tensor:
-        """Broadcast scalar value to target shape."""
+    def _set_attribute(self, value: tf.Tensor, shape: tf.Tensor, dtype: tf.dtypes.DType) -> tf.Tensor:
+        """Broadcast scalar value to target shape with the target dtype."""
+        value = tf.cast(value, dtype)
         value = tf.expand_dims(value, axis=-1)
         value = tf.broadcast_to(value, shape)
         return value
@@ -247,23 +249,24 @@ class DimensionAwareLayer(layers.Layer):
         eigen_values, original_inputs = inputs
         n_stocks = tf.cast(tf.shape(original_inputs)[1], tf.float32)
         n_days = tf.cast(tf.shape(original_inputs)[2], tf.float32)
+        target_dtype = eigen_values.dtype
         final_shape = tf.shape(eigen_values)
         
         tensors_to_concat = [eigen_values]
         
         if 'q' in self.features:
             q = n_days / n_stocks
-            tensors_to_concat.append(self._set_attribute(q, final_shape))
+            tensors_to_concat.append(self._set_attribute(q, final_shape, target_dtype))
             
         if 'n_stocks' in self.features:
-            tensors_to_concat.append(self._set_attribute(tf.sqrt(n_stocks), final_shape))
+            tensors_to_concat.append(self._set_attribute(tf.sqrt(n_stocks), final_shape, target_dtype))
             
         if 'n_days' in self.features:
-            tensors_to_concat.append(self._set_attribute(tf.sqrt(n_days), final_shape))
+            tensors_to_concat.append(self._set_attribute(tf.sqrt(n_days), final_shape, target_dtype))
             
         if 'rsqrt_n_days' in self.features:
             rsqrt_n_days = tf.math.rsqrt(n_days)
-            tensors_to_concat.append(self._set_attribute(rsqrt_n_days, final_shape))
+            tensors_to_concat.append(self._set_attribute(rsqrt_n_days, final_shape, target_dtype))
             
         return tf.concat(tensors_to_concat, axis=-1)
 
@@ -602,8 +605,6 @@ class CustomNormalizationLayer(layers.Layer):
         Normalization mode: 'sum' or 'inverse'
     axis : int, default -2
         Axis along which to normalize
-    epsilon : float, default 1e-6
-        Numerical stability constant
     inverse_power : float, default 1.0
         Exponent used when ``mode='inverse'`` so that the normalization enforces
         ``mean(x^{-inverse_power}) = 1`` along the target axis.
@@ -614,7 +615,6 @@ class CustomNormalizationLayer(layers.Layer):
     def __init__(self,
                  mode: str = 'sum',
                  axis: int = -2,
-                 epsilon: float = 1e-6,
                  inverse_power: float = 1.0,
                  name: Optional[str] = None,
                  **kwargs):
@@ -623,7 +623,6 @@ class CustomNormalizationLayer(layers.Layer):
         super().__init__(name=name, **kwargs)
         self.mode = mode
         self.axis = axis
-        self.epsilon = epsilon
         if inverse_power <= 0:
             raise ValueError("inverse_power must be positive")
         self.inverse_power = float(inverse_power)
@@ -643,7 +642,7 @@ class CustomNormalizationLayer(layers.Layer):
             Normalized tensor
         """
         dtype = x.dtype
-        epsilon = tf.cast(self.epsilon, dtype)
+        epsilon = epsilon_for_dtype(dtype, self.epsilon)
         n = tf.cast(tf.shape(x)[self.axis], dtype)
 
         denom_axis = tf.reduce_sum(x, axis=self.axis, keepdims=True)
@@ -665,7 +664,6 @@ class CustomNormalizationLayer(layers.Layer):
         config.update({
             'mode': self.mode,
             'axis': self.axis,
-            'epsilon': float(self.epsilon),
             'inverse_power': self.inverse_power
         })
         return config
@@ -736,8 +734,7 @@ class EigenProductLayer(layers.Layer):
             inv_sqrt = tf.math.rsqrt(diag_P)  # [..., n] = 1/√diag
             row = tf.expand_dims(inv_sqrt, axis=-1)  # [..., n, 1]
             col = tf.expand_dims(inv_sqrt, axis=-2)  # [..., 1, n]
-            return P * row * col
-
+            P = P * row * col
         else:  # 'inverse'
             # For precision matrix scaling
             diag_Sigma = tf.reduce_sum(
@@ -747,13 +744,14 @@ class EigenProductLayer(layers.Layer):
             sqrt_d = tf.sqrt(diag_Sigma)  # [..., n]
             row = tf.expand_dims(sqrt_d, axis=-1)  # [..., n, 1]
             col = tf.expand_dims(sqrt_d, axis=-2)  # [..., 1, n]
-            return P * row * col
+            P = P * row * col
 
+        return P
+    
     def get_config(self) -> dict:
         config = super().get_config()
         config.update({'scaling_factor': self.scaling_factor})
         return config
-
 
 @tf.keras.utils.register_keras_serializable(package='compact_rienet')
 class NormalizedSum(layers.Layer):
@@ -769,8 +767,7 @@ class NormalizedSum(layers.Layer):
         First axis for summation
     axis_2 : int, default -2
         Second axis for normalization
-    epsilon : float, default 1e-6
-        Numerical stability constant
+
     name : str, optional
         Layer name
     """
@@ -778,7 +775,6 @@ class NormalizedSum(layers.Layer):
     def __init__(self,
                  axis_1: int = -1,
                  axis_2: int = -2,
-                 epsilon: float = 1e-6,
                  name: Optional[str] = None,
                  **kwargs):
         if name is None:
@@ -786,7 +782,6 @@ class NormalizedSum(layers.Layer):
         super().__init__(name=name, **kwargs)
         self.axis_1 = axis_1
         self.axis_2 = axis_2
-        self.epsilon = epsilon
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         """
@@ -803,7 +798,7 @@ class NormalizedSum(layers.Layer):
             Normalized sum
         """
         dtype = x.dtype
-        epsilon = tf.cast(self.epsilon, dtype)
+        epsilon = epsilon_for_dtype(dtype, self.epsilon)
         w = tf.reduce_sum(x, axis=self.axis_1, keepdims=True)
         denominator = tf.reduce_sum(w, axis=self.axis_2, keepdims=True)
         sign = tf.where(denominator >= 0, tf.ones_like(denominator), -tf.ones_like(denominator))
@@ -812,14 +807,14 @@ class NormalizedSum(layers.Layer):
             sign * epsilon,
             denominator
         )
-        return w / safe_denominator
+        result = w / safe_denominator
+        return result
 
     def get_config(self) -> dict:
         config = super().get_config()
         config.update({
             'axis_1': self.axis_1,
             'axis_2': self.axis_2,
-            'epsilon': float(self.epsilon)
         })
         return config
 
@@ -849,7 +844,9 @@ class LagTransformLayer(layers.Layer):
             raise ValueError("LagTransformLayer must have a name.")
         super().__init__(name=name, **kwargs)
         
-        self.eps = eps if eps is not None else K.epsilon()
+        self._eps_base = float(eps if eps is not None else K.epsilon())
+        # Retain the historical attribute name for backwards compatibility.
+        self.eps = self._eps_base
         self.warm_start = warm_start
         
         # Target parameter values optimized for financial data
@@ -864,7 +861,7 @@ class LagTransformLayer(layers.Layer):
 
     def _add_param(self, name: str, target: float) -> tf.Variable:
         """Add a learnable parameter with appropriate initialization."""
-        mean_raw = self._inv_softplus(target - self.eps)
+        mean_raw = self._inv_softplus(target - self._eps_base)
 
         if self.warm_start:
             init = initializers.Constant(mean_raw)
@@ -892,7 +889,7 @@ class LagTransformLayer(layers.Layer):
 
     def _pos(self, x: tf.Tensor) -> tf.Tensor:
         """Apply softplus + epsilon to ensure positive values."""
-        return tf.nn.softplus(x) + self.eps
+        return tf.nn.softplus(x) + epsilon_for_dtype(x.dtype, self._eps_base)
 
     def call(self, R: tf.Tensor) -> tf.Tensor:
         """
@@ -908,18 +905,19 @@ class LagTransformLayer(layers.Layer):
         tf.Tensor
             Transformed returns with same shape as input
         """
+        dtype = R.dtype
         T = tf.shape(R)[-1]  # Time dimension length
 
         # Create time indices: t = [T, T-1, ..., 1]
-        t = tf.cast(tf.range(1, T + 1), R.dtype)  # [1, 2, ..., T]
+        t = tf.cast(tf.range(1, T + 1), dtype)  # [1, 2, ..., T]
         t = tf.reverse(t, axis=[0])  # [T, T-1, ..., 1]
 
         # Get positive parameters via softplus
-        c0 = self._pos(self._raw_c0)
-        c1 = self._pos(self._raw_c1)
-        c2 = self._pos(self._raw_c2)
-        c3 = self._pos(self._raw_c3)
-        c4 = self._pos(self._raw_c4)
+        c0 = tf.cast(self._pos(self._raw_c0), dtype)
+        c1 = tf.cast(self._pos(self._raw_c1), dtype)
+        c2 = tf.cast(self._pos(self._raw_c2), dtype)
+        c3 = tf.cast(self._pos(self._raw_c3), dtype)
+        c4 = tf.cast(self._pos(self._raw_c4), dtype)
 
         # Compute lag transformation parameters
         alpha = c0 * tf.pow(t, -c1)  # (T,)
@@ -930,16 +928,19 @@ class LagTransformLayer(layers.Layer):
         pad_ones = tf.ones(ndims - 1, dtype=tf.int32)
         shape_T = tf.concat([pad_ones, [T]], 0)
 
-        alpha_div_beta = tf.reshape(alpha / (beta + self.eps), shape_T)
+        eps_tensor = epsilon_for_dtype(dtype, self._eps_base)
+
+        alpha_div_beta = tf.reshape(alpha / (beta + eps_tensor), shape_T)
         beta = tf.reshape(beta, shape_T)
 
         # Apply transformation: alpha/beta * tanh(beta * R)
-        return alpha_div_beta * tf.tanh(beta * R)
+        transformed = alpha_div_beta * tf.tanh(beta * R)
+        return transformed
     
     def get_config(self) -> dict:
         config = super().get_config()
         config.update({
-            'eps': self.eps,
+            'eps': self._eps_base,
             'warm_start': self.warm_start
         })
         return config
