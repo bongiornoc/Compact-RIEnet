@@ -39,6 +39,8 @@ class StandardDeviationLayer(layers.Layer):
         Axis along which to compute statistics
     demean : bool, default False
         Whether to use an unbiased denominator (n-1)
+    epsilon : float, optional
+        Small epsilon for numerical stability
     name : str, optional
         Layer name
     """
@@ -46,6 +48,7 @@ class StandardDeviationLayer(layers.Layer):
     def __init__(self,
                  axis: int = 1,
                  demean: bool = False,
+                 epsilon: Optional[float] = None,
                  name: Optional[str] = None,
                  **kwargs):
         if name is None:
@@ -53,6 +56,7 @@ class StandardDeviationLayer(layers.Layer):
         super().__init__(name=name, **kwargs)
         self.axis = axis
         self.demean = demean
+        self.epsilon = float(epsilon if epsilon is not None else K.epsilon())
 
     def call(self, x: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
         """
@@ -92,6 +96,7 @@ class StandardDeviationLayer(layers.Layer):
         config.update({
             'axis': self.axis,
             'demean': self.demean,
+            'epsilon': self.epsilon,
         })
         return config
 
@@ -608,6 +613,8 @@ class CustomNormalizationLayer(layers.Layer):
     inverse_power : float, default 1.0
         Exponent used when ``mode='inverse'`` so that the normalization enforces
         ``mean(x^{-inverse_power}) = 1`` along the target axis.
+    epsilon : float, optional
+        Small epsilon for numerical stability
     name : str, optional
         Layer name
     """
@@ -616,6 +623,7 @@ class CustomNormalizationLayer(layers.Layer):
                  mode: str = 'sum',
                  axis: int = -2,
                  inverse_power: float = 1.0,
+                 epsilon: Optional[float] = None,
                  name: Optional[str] = None,
                  **kwargs):
         if name is None:
@@ -626,6 +634,7 @@ class CustomNormalizationLayer(layers.Layer):
         if inverse_power <= 0:
             raise ValueError("inverse_power must be positive")
         self.inverse_power = float(inverse_power)
+        self.epsilon = float(epsilon if epsilon is not None else K.epsilon())
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         """
@@ -664,7 +673,8 @@ class CustomNormalizationLayer(layers.Layer):
         config.update({
             'mode': self.mode,
             'axis': self.axis,
-            'inverse_power': self.inverse_power
+            'inverse_power': self.inverse_power,
+            'epsilon': self.epsilon,
         })
         return config
 
@@ -767,7 +777,8 @@ class NormalizedSum(layers.Layer):
         First axis for summation
     axis_2 : int, default -2
         Second axis for normalization
-
+    epsilon : float, optional
+        Small epsilon for numerical stability
     name : str, optional
         Layer name
     """
@@ -775,6 +786,7 @@ class NormalizedSum(layers.Layer):
     def __init__(self,
                  axis_1: int = -1,
                  axis_2: int = -2,
+                 epsilon: Optional[float] = None,
                  name: Optional[str] = None,
                  **kwargs):
         if name is None:
@@ -782,6 +794,7 @@ class NormalizedSum(layers.Layer):
         super().__init__(name=name, **kwargs)
         self.axis_1 = axis_1
         self.axis_2 = axis_2
+        self.epsilon = float(epsilon if epsilon is not None else K.epsilon())
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         """
@@ -815,6 +828,7 @@ class NormalizedSum(layers.Layer):
         config.update({
             'axis_1': self.axis_1,
             'axis_2': self.axis_2,
+            'epsilon': self.epsilon,
         })
         return config
 
