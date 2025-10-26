@@ -30,6 +30,7 @@ from .custom_layers import (
     DeepLayer,
     CustomNormalizationLayer,
     EigenProductLayer,
+    EigenvectorRescalingLayer,
     NormalizedSum
 )
 from .dtype_utils import epsilon_for_dtype
@@ -293,13 +294,14 @@ class CompactRIEnetLayer(layers.Layer):
             self.std_normalization = None
         
         # Matrix reconstruction (see Eq. 13-15)
+        self.eigenvector_rescaler = EigenvectorRescalingLayer(
+            name=f"{self.name}_eigenvector_rescaler"
+        )
         self.eigen_product = EigenProductLayer(
-            scaling_factor='inverse',
             name=f"{self.name}_eigen_product"
         )
 
         self.correlation_product = EigenProductLayer(
-            scaling_factor='direct',
             name=f"{self.name}_correlation"
         )
 
@@ -342,6 +344,7 @@ class CompactRIEnetLayer(layers.Layer):
         self.std_transform.build(std_shape)
         if self.std_normalization is not None:
             self.std_normalization.build(std_shape)
+        self.eigenvector_rescaler.build([covariance_shape, eigenvalues_vector_shape])
         self.eigen_product.build([eigenvalues_vector_shape, covariance_shape])
         self.correlation_product.build([eigenvalues_vector_shape, covariance_shape])
         self.outer_product.build(std_shape)
@@ -392,57 +395,39 @@ class CompactRIEnetLayer(layers.Layer):
         
         # Transform eigenvalues with recurrent network
         transformed_inverse_eigenvalues = self.eigenvalue_transform(eigenvalues_enhanced)
-        spectrum_epsilon = epsilon_for_dtype(
-            transformed_inverse_eigenvalues.dtype,
-            tf.keras.backend.epsilon(),
-        )
-        transformed_inverse_eigenvalues = tf.maximum(transformed_inverse_eigenvalues, spectrum_epsilon)
-
+        
+        
+        
         # Transform standard deviations
         transformed_inverse_std = self.std_transform(std)
         if self.std_normalization is not None:
             transformed_inverse_std = self.std_normalization(transformed_inverse_std)
-        transformed_inverse_std = tf.maximum(
-            transformed_inverse_std,
-            epsilon_for_dtype(
-                transformed_inverse_std.dtype,
-                tf.keras.backend.epsilon(),
-            )
+       
+        # Rescale eigenvectors for precision reconstruction
+        inverse_eigenvectors = self.eigenvector_rescaler(
+            [eigenvectors, transformed_inverse_eigenvalues]
         )
-
-        # Build inverse correlation matrix (Eq. 13-14 of the paper)
         inverse_correlation = self.eigen_product(
-            transformed_inverse_eigenvalues, eigenvectors
+            transformed_inverse_eigenvalues, inverse_eigenvectors
         )
 
         transformed_eigenvalues = tf.math.reciprocal(transformed_inverse_eigenvalues)
-        transformed_eigenvalues = tf.maximum(
-            transformed_eigenvalues,
-            epsilon_for_dtype(
-                transformed_eigenvalues.dtype,
-                tf.keras.backend.epsilon(),
-            )
+        
+        direct_eigenvectors = self.eigenvector_rescaler(
+            [eigenvectors, transformed_eigenvalues]
         )
         correlation_matrix = self.correlation_product(
-            transformed_eigenvalues, eigenvectors
+            transformed_eigenvalues, direct_eigenvectors
         )
-        correlation_matrix = 0.5 * (
-            correlation_matrix + tf.linalg.matrix_transpose(correlation_matrix)
-        )
-
+        
         # Combine with marginal inverse volatilities to obtain Σ^{-1}
         inverse_volatility_matrix = self.outer_product(transformed_inverse_std)
         precision_matrix = inverse_correlation * inverse_volatility_matrix
-        precision_matrix = 0.5 * (precision_matrix + tf.linalg.matrix_transpose(precision_matrix))
 
         transformed_std = tf.math.reciprocal(transformed_inverse_std)
-        transformed_std = tf.maximum(
-            transformed_std,
-            epsilon_for_dtype(transformed_std.dtype, tf.keras.backend.epsilon()),
-        )
+        
         volatility_matrix = self.outer_product(transformed_std)
         covariance = correlation_matrix * volatility_matrix
-        covariance = 0.5 * (covariance + tf.linalg.matrix_transpose(covariance))
 
         results = {}
         if 'precision' in self.output_components:

@@ -29,6 +29,7 @@ from compact_rienet.custom_layers import (
     DeepRecurrentLayer,
     CustomNormalizationLayer,
     EigenProductLayer,
+    EigenvectorRescalingLayer,
     NormalizedSum,
     LagTransformLayer
 )
@@ -304,7 +305,7 @@ class TestCustomLayers:
     
     def test_eigen_product_layer(self):
         """Test EigenProductLayer."""
-        layer = EigenProductLayer(scaling_factor='none', name='test_eigen_product')
+        layer = EigenProductLayer(name='test_eigen_product')
 
         batch_size, n_assets = 4, 5
         eigenvalues = tf.random.normal((batch_size, n_assets))
@@ -319,10 +320,23 @@ class TestCustomLayers:
         expected_shape = (batch_size, n_assets, n_assets)
         assert reconstructed.shape == expected_shape
 
+    def test_eigenvector_rescaling_layer(self):
+        """EigenvectorRescalingLayer enforces unit diagonals."""
+        layer = EigenvectorRescalingLayer(name='test_eigenvector_rescaler')
+        product_layer = EigenProductLayer(name='test_eigen_product_for_rescaler')
+
+        batch_size, n_assets = 3, 4
+        eigenvalues = tf.random.uniform((batch_size, n_assets), 0.5, 1.5)
+        eigenvectors = tf.linalg.qr(tf.random.normal((batch_size, n_assets, n_assets)))[0]
+
+        rescaled = layer([eigenvectors, eigenvalues])
+        reconstructed = product_layer(eigenvalues, rescaled)
+        diag = tf.linalg.diag_part(reconstructed)
+        assert float(tf.reduce_max(tf.abs(diag - 1.0)).numpy()) < 1e-6
+
     def test_precision_normalization_diagonal_mean(self):
         """Normalized precision keeps covariance diagonal centred on one."""
         batch_size, n_assets = 2, 6
-        # Use identity eigenvectors for clarity
         eigenvectors = tf.eye(n_assets, batch_shape=[batch_size])
 
         raw_eigenvalues = tf.random.uniform((batch_size, n_assets, 1), 0.5, 1.5)
@@ -331,13 +345,16 @@ class TestCustomLayers:
         )
         cleaned_eigenvalues = tf.squeeze(eigen_normalizer(raw_eigenvalues), axis=-1)
 
-        inverse_layer = EigenProductLayer(scaling_factor='inverse', name='test_precision_reconstruct')
-        inverse_correlation = inverse_layer(cleaned_eigenvalues, eigenvectors)
+        rescaler = EigenvectorRescalingLayer(name='test_precision_rescaler')
+        inverse_layer = EigenProductLayer(name='test_precision_reconstruct')
+        inverse_vectors = rescaler([eigenvectors, cleaned_eigenvalues])
+        inverse_correlation = inverse_layer(cleaned_eigenvalues, inverse_vectors)
 
-        correlation_layer = EigenProductLayer(scaling_factor='direct', name='test_correlation_reconstruct')
+        correlation_layer = EigenProductLayer(name='test_correlation_reconstruct')
         eps = tf.cast(1e-6, cleaned_eigenvalues.dtype)
         cleaned_inverse = tf.math.reciprocal(tf.maximum(cleaned_eigenvalues, eps))
-        correlation = correlation_layer(cleaned_inverse, eigenvectors)
+        correlation_vectors = rescaler([eigenvectors, cleaned_inverse])
+        correlation = correlation_layer(cleaned_inverse, correlation_vectors)
         diag_corr = tf.linalg.diag_part(correlation)
         assert float(tf.reduce_max(tf.abs(diag_corr - 1.0)).numpy()) < 1e-6
 
