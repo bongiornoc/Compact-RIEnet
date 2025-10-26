@@ -369,11 +369,27 @@ class CompactRIEnetLayer(layers.Layer):
             - precision: cleaned precision matrix Σ^{-1}
             - covariance: pseudo-inverse covariance Σ
         """
+        need_precision = 'precision' in self.output_components
+        need_covariance = 'covariance' in self.output_components
+        need_weights = 'weights' in self.output_components
+        need_structural_outputs = need_precision or need_covariance or need_weights
+
         # Scale inputs by annualization factor
         scaled_inputs = inputs * self._annualization_factor
         
         # Apply lag transformation
         input_transformed = self.lag_transform(scaled_inputs)
+
+        results = {}
+        if 'input_transformed' in self.output_components:
+            results['input_transformed'] = input_transformed
+
+        if not need_structural_outputs:
+            return (
+                results[self.output_components[0]]
+                if len(self.output_components) == 1
+                else results
+            )
         
         # Compute standard deviation and mean
         std, mean = self.std_layer(input_transformed)
@@ -388,61 +404,46 @@ class CompactRIEnetLayer(layers.Layer):
         eigenvalues, eigenvectors = self.spectral_decomp(correlation_matrix)
         
         # Add dimensional features
-        eigenvalues_enhanced = self.dimension_aware([eigenvalues, scaled_inputs])
+        eigenvalues_contextualized = self.dimension_aware([eigenvalues, scaled_inputs])
         
         # Transform eigenvalues with recurrent network
-        transformed_inverse_eigenvalues = self.eigenvalue_transform(eigenvalues_enhanced)
-        
-        
-        
-        # Transform standard deviations
+        transformed_inverse_eigenvalues = self.eigenvalue_transform(eigenvalues_contextualized)
+        transformed_eigenvalues = tf.math.reciprocal(transformed_inverse_eigenvalues)
+
+        # Rescale eigenvectors to ensure 1 on diagonal after cleaning
+        adjusted_eigenvectors = self.eigenvector_rescaler([eigenvectors, transformed_eigenvalues])
+
+        # Transform standard deviations (normalize only when needed downstream)
         transformed_inverse_std = self.std_transform(std)
-        if self.std_normalization is not None:
+        if self.std_normalization is not None and (need_precision or need_covariance):
             transformed_inverse_std = self.std_normalization(transformed_inverse_std)
        
-        # Rescale eigenvectors for precision reconstruction
-        inverse_eigenvectors = self.eigenvector_rescaler(
-            [eigenvectors, transformed_inverse_eigenvalues]
-        )
-        inverse_correlation = self.eigen_product(
-            transformed_inverse_eigenvalues, inverse_eigenvectors
-        )
-
-        transformed_eigenvalues = tf.math.reciprocal(transformed_inverse_eigenvalues)
-        
-        direct_eigenvectors = self.eigenvector_rescaler(
-            [eigenvectors, transformed_eigenvalues]
-        )
-        correlation_matrix = self.correlation_product(
-            transformed_eigenvalues, direct_eigenvectors
-        )
-        
-        # Combine with marginal inverse volatilities to obtain Σ^{-1}
-        inverse_volatility_matrix = self.outer_product(transformed_inverse_std)
-        precision_matrix = inverse_correlation * inverse_volatility_matrix
-
-        transformed_std = tf.math.reciprocal(transformed_inverse_std)
-        
-        volatility_matrix = self.outer_product(transformed_std)
-        covariance = correlation_matrix * volatility_matrix
-
-        results = {}
-        if 'precision' in self.output_components:
+        # Precision-specific reconstruction
+        if need_precision:
+            inverse_correlation = self.eigen_product(
+                transformed_inverse_eigenvalues, adjusted_eigenvectors
+            )
+            inverse_volatility_matrix = self.outer_product(transformed_inverse_std)
+            precision_matrix = inverse_correlation * inverse_volatility_matrix
             results['precision'] = precision_matrix
 
-        if 'covariance' in self.output_components:
+        # Covariance-specific reconstruction
+        if need_covariance:
+            cleaned_correlation = self.correlation_product(
+                transformed_eigenvalues, adjusted_eigenvectors
+            )
+            transformed_std = tf.math.reciprocal(transformed_inverse_std)
+            volatility_matrix = self.outer_product(transformed_std)
+            covariance = cleaned_correlation * volatility_matrix
             results['covariance'] = covariance
 
-        if 'weights' in self.output_components:
+        if need_weights:
             weights = self.weight_layer([
                 eigenvectors,
                 transformed_inverse_eigenvalues,
                 transformed_inverse_std
             ])
             results['weights'] = weights
-
-        if 'input_transformed' in self.output_components:
-            results['input_transformed'] = input_transformed
 
         if len(self.output_components) == 1:
             return results[self.output_components[0]]
