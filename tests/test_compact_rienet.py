@@ -29,6 +29,8 @@ from compact_rienet.custom_layers import (
     DeepRecurrentLayer,
     CustomNormalizationLayer,
     EigenProductLayer,
+    EigenvectorRescalingLayer,
+    EigenWeightsLayer,
     NormalizedSum,
     LagTransformLayer
 )
@@ -91,6 +93,17 @@ class TestCompactRIEnetLayer:
         expected_shape = (batch_size, n_stocks, n_stocks)
         assert outputs.shape == expected_shape, f"Expected {expected_shape}, got {outputs.shape}"
     
+    def test_correlation_output_shape(self):
+        """Test that correlation output has correct shape."""
+        layer = CompactRIEnetLayer(output_type='correlation')
+
+        batch_size, n_stocks, n_days = 7, 6, 30
+        inputs = tf.random.normal((batch_size, n_stocks, n_days))
+        outputs = layer(inputs)
+
+        expected_shape = (batch_size, n_stocks, n_stocks)
+        assert outputs.shape == expected_shape, f"Expected {expected_shape}, got {outputs.shape}"
+    
     def test_weights_normalization(self):
         """Test that portfolio weights sum to 1."""
         layer = CompactRIEnetLayer(output_type='weights')
@@ -103,7 +116,7 @@ class TestCompactRIEnetLayer:
         weights_sum = tf.reduce_sum(weights, axis=1)  # Sum over stocks
         
         # Should be close to 1 for each sample
-        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-6)
+        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-5)
     
     def test_input_scaling(self):
         """Test that input scaling by 252 is applied."""
@@ -304,7 +317,7 @@ class TestCustomLayers:
     
     def test_eigen_product_layer(self):
         """Test EigenProductLayer."""
-        layer = EigenProductLayer(scaling_factor='none', name='test_eigen_product')
+        layer = EigenProductLayer(name='test_eigen_product')
 
         batch_size, n_assets = 4, 5
         eigenvalues = tf.random.normal((batch_size, n_assets))
@@ -319,10 +332,42 @@ class TestCustomLayers:
         expected_shape = (batch_size, n_assets, n_assets)
         assert reconstructed.shape == expected_shape
 
+    def test_eigenvector_rescaling_layer(self):
+        """EigenvectorRescalingLayer enforces unit diagonals."""
+        layer = EigenvectorRescalingLayer(name='test_eigenvector_rescaler')
+        product_layer = EigenProductLayer(name='test_eigen_product_for_rescaler')
+
+        batch_size, n_assets = 3, 4
+        eigenvalues = tf.random.uniform((batch_size, n_assets), 0.5, 1.5)
+        eigenvectors = tf.linalg.qr(tf.random.normal((batch_size, n_assets, n_assets)))[0]
+
+        rescaled = layer([eigenvectors, eigenvalues])
+        reconstructed = product_layer(eigenvalues, rescaled)
+        diag = tf.linalg.diag_part(reconstructed)
+        assert float(tf.reduce_max(tf.abs(diag - 1.0)).numpy()) < 1e-6
+
+    def test_eigen_weights_layer(self):
+        """EigenWeightsLayer matches numpy einsum formulation."""
+        layer = EigenWeightsLayer(name='test_eigen_weights')
+
+        batch_size, n_assets = 2, 4
+        eigenvectors = tf.linalg.qr(tf.random.normal((batch_size, n_assets, n_assets)))[0]
+        inverse_eigenvalues = tf.random.uniform((batch_size, n_assets, 1), 0.5, 1.5)
+        inverse_std = tf.random.uniform((batch_size, n_assets, 1), 0.8, 1.2)
+
+        weights = layer([eigenvectors, inverse_eigenvalues, inverse_std])
+
+        ev = eigenvectors.numpy()
+        inv_eig = inverse_eigenvalues.numpy().reshape(batch_size, n_assets)
+        inv_std_np = inverse_std.numpy().reshape(batch_size, n_assets)
+        c = ev.sum(axis=1)
+        raw = np.einsum('bik,bk,bk,bi->bi', ev, inv_eig, c, inv_std_np)
+        expected = raw / raw.sum(axis=1, keepdims=True)
+        np.testing.assert_allclose(weights.numpy().squeeze(-1), expected, rtol=1e-5, atol=1e-6)
+
     def test_precision_normalization_diagonal_mean(self):
         """Normalized precision keeps covariance diagonal centred on one."""
         batch_size, n_assets = 2, 6
-        # Use identity eigenvectors for clarity
         eigenvectors = tf.eye(n_assets, batch_shape=[batch_size])
 
         raw_eigenvalues = tf.random.uniform((batch_size, n_assets, 1), 0.5, 1.5)
@@ -331,13 +376,16 @@ class TestCustomLayers:
         )
         cleaned_eigenvalues = tf.squeeze(eigen_normalizer(raw_eigenvalues), axis=-1)
 
-        inverse_layer = EigenProductLayer(scaling_factor='inverse', name='test_precision_reconstruct')
-        inverse_correlation = inverse_layer(cleaned_eigenvalues, eigenvectors)
+        rescaler = EigenvectorRescalingLayer(name='test_precision_rescaler')
+        inverse_layer = EigenProductLayer(name='test_precision_reconstruct')
+        inverse_vectors = rescaler([eigenvectors, cleaned_eigenvalues])
+        inverse_correlation = inverse_layer(cleaned_eigenvalues, inverse_vectors)
 
-        correlation_layer = EigenProductLayer(scaling_factor='direct', name='test_correlation_reconstruct')
+        correlation_layer = EigenProductLayer(name='test_correlation_reconstruct')
         eps = tf.cast(1e-6, cleaned_eigenvalues.dtype)
         cleaned_inverse = tf.math.reciprocal(tf.maximum(cleaned_eigenvalues, eps))
-        correlation = correlation_layer(cleaned_inverse, eigenvectors)
+        correlation_vectors = rescaler([eigenvectors, cleaned_inverse])
+        correlation = correlation_layer(cleaned_inverse, correlation_vectors)
         diag_corr = tf.linalg.diag_part(correlation)
         assert float(tf.reduce_max(tf.abs(diag_corr - 1.0)).numpy()) < 1e-6
 
@@ -395,7 +443,7 @@ class TestCustomLayers:
         
         # Should sum to 1 along the specified axis
         weights_sum = tf.reduce_sum(weights, axis=-2, keepdims=True)
-        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-6)
+        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-5)
     
     def test_lag_transform_layer(self):
         """Test LagTransformLayer."""

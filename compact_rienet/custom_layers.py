@@ -680,31 +680,85 @@ class CustomNormalizationLayer(layers.Layer):
 
 
 @tf.keras.utils.register_keras_serializable(package='compact_rienet')
+class EigenvectorRescalingLayer(layers.Layer):
+    """
+    Layer that rescales eigenvectors to enforce unit diagonals.
+
+    Given eigenvectors ``V`` and eigenvalues ``λ`` this layer computes the diagonal
+    elements of ``V diag(λ) Vᵀ`` and divides each eigenvector row by the square
+    root of the corresponding diagonal entry. The operation matches::
+
+        d = einsum('...ij,...j,...ij->...i', V, λ, V)
+        V_rescaled = V / sqrt(d)[..., None]
+
+    Parameters
+    ----------
+    epsilon : float, optional
+        Minimum value used to avoid division-by-zero during normalization.
+    name : str, optional
+        Layer name.
+    """
+
+    def __init__(self, epsilon: Optional[float] = None, name: Optional[str] = None, **kwargs):
+        if name is None:
+            raise ValueError("EigenvectorRescalingLayer must have a name.")
+        super().__init__(name=name, **kwargs)
+        self.epsilon = float(epsilon if epsilon is not None else K.epsilon())
+
+    def build(self, input_shape) -> None:
+        # Nothing to build, but override for Keras compatibility
+        super().build(input_shape)
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
+        """
+        Rescale eigenvectors based on eigenvalues.
+
+        Parameters
+        ----------
+        inputs : tuple
+            (eigenvectors, eigenvalues)
+
+        Returns
+        -------
+        tf.Tensor
+            Rescaled eigenvectors with the same shape as the input eigenvectors.
+        """
+        eigenvectors, eigenvalues = inputs
+        dtype = eigenvectors.dtype
+        eigenvectors = tf.convert_to_tensor(eigenvectors, dtype=dtype)
+        eigenvalues = tf.convert_to_tensor(eigenvalues, dtype=dtype)
+
+        target_shape = tf.shape(eigenvectors)[:-1]
+        eigenvalues = tf.reshape(eigenvalues, target_shape)
+
+        diag = tf.einsum('...ij,...j,...ij->...i', eigenvectors, eigenvalues, eigenvectors)
+        eps = epsilon_for_dtype(dtype, self.epsilon)
+        diag = tf.maximum(diag, eps)
+        inv_sqrt = tf.math.rsqrt(diag)
+        scaling = tf.expand_dims(inv_sqrt, axis=-1)
+        return eigenvectors * scaling
+
+    def get_config(self) -> dict:
+        config = super().get_config()
+        config.update({'epsilon': self.epsilon})
+        return config
+
+
+@tf.keras.utils.register_keras_serializable(package='compact_rienet')
 class EigenProductLayer(layers.Layer):
     """
     Layer for reconstructing matrices from eigenvalue decomposition.
     
-    This layer reconstructs matrices from eigenvalues and eigenvectors using
-    the formula: Matrix = V @ diag(eigenvalues) @ V^T, with optional scaling
-    for precision or covariance matrix reconstruction.
-    
-    Parameters
-    ----------
-    scaling_factor : str, default 'none'
-        Scaling mode: 'inverse', 'direct', or 'none'
-    name : str, optional
-        Layer name
+    This layer implements the vanilla reconstruction ``V diag(λ) Vᵀ`` without
+    any diagonal post-scaling. It assumes eigenvectors have already been
+    preprocessed (e.g., via :class:`EigenvectorRescalingLayer`) when diagonal
+    control is required.
     """
     
-    def __init__(self, scaling_factor: str = 'none', name: Optional[str] = None, **kwargs):
-        super().__init__(name=name, **kwargs)
-        
+    def __init__(self, name: Optional[str] = None, **kwargs):
         if name is None:
             raise ValueError("EigenProductLayer must have a name.")
-        if scaling_factor not in ['inverse', 'direct', 'none']:
-            raise ValueError("scaling_factor must be 'inverse', 'direct', or 'none'")
-        
-        self.scaling_factor = scaling_factor
+        super().__init__(name=name, **kwargs)
 
     def call(self, eigenvalues: tf.Tensor, eigenvectors: tf.Tensor) -> tf.Tensor:
         """
@@ -713,7 +767,7 @@ class EigenProductLayer(layers.Layer):
         Parameters
         ----------
         eigenvalues : tf.Tensor
-            Eigenvalues tensor of shape [..., n]
+            Eigenvalues tensor of shape [..., n] or [..., n, 1]
         eigenvectors : tf.Tensor
             Eigenvectors tensor of shape [..., n, n]
             
@@ -722,45 +776,75 @@ class EigenProductLayer(layers.Layer):
         tf.Tensor
             Reconstructed matrix
         """
-        # Construct base matrix P = V @ diag(s) @ V^T
-        if self.scaling_factor == 'inverse':
-            # For precision matrix use 1/λ
-            s = tf.math.reciprocal(eigenvalues)
-        else:
-            # For covariance matrix use λ
-            s = eigenvalues
+        dtype = eigenvectors.dtype
+        eigenvalues = tf.convert_to_tensor(eigenvalues, dtype=dtype)
+        eigenvectors = tf.convert_to_tensor(eigenvectors, dtype=dtype)
 
-        # Scale eigenvectors: each column k of V is scaled by s[..., k]
-        V_scaled = eigenvectors * tf.expand_dims(s, axis=-2)  # [..., n, n]
-        P = tf.matmul(V_scaled, eigenvectors, transpose_b=True)  # [..., n, n]
+        target_shape = tf.shape(eigenvectors)[:-1]
+        eigenvalues = tf.reshape(eigenvalues, target_shape)
 
-        if self.scaling_factor == 'none':
-            return P
+        scaled_vectors = eigenvectors * tf.expand_dims(eigenvalues, axis=-2)
+        return tf.matmul(scaled_vectors, eigenvectors, transpose_b=True)
 
-        # Apply scaling based on mode
-        if self.scaling_factor == 'direct':
-            # Normalize P so diagonal elements are handled correctly
-            diag_P = tf.linalg.diag_part(P)  # [..., n]
-            inv_sqrt = tf.math.rsqrt(diag_P)  # [..., n] = 1/√diag
-            row = tf.expand_dims(inv_sqrt, axis=-1)  # [..., n, 1]
-            col = tf.expand_dims(inv_sqrt, axis=-2)  # [..., 1, n]
-            P = P * row * col
-        else:  # 'inverse'
-            # For precision matrix scaling
-            diag_Sigma = tf.reduce_sum(
-                tf.square(eigenvectors) * tf.expand_dims(eigenvalues, -2),
-                axis=-1
-            )  # [..., n]
-            sqrt_d = tf.sqrt(diag_Sigma)  # [..., n]
-            row = tf.expand_dims(sqrt_d, axis=-1)  # [..., n, 1]
-            col = tf.expand_dims(sqrt_d, axis=-2)  # [..., 1, n]
-            P = P * row * col
+    def get_config(self) -> dict:
+        return super().get_config()
 
-        return P
-    
+
+@tf.keras.utils.register_keras_serializable(package='compact_rienet')
+class EigenWeightsLayer(layers.Layer):
+    """
+    Layer computing GMV-like weights from eigenvectors, eigenvalues and stds.
+
+    Implements the einsum-based rule::
+
+        c_i = sum_j V_{ij}
+        w_i ∝ Σ_k V_{ik} λ_k^{-1} c_k σ_i^{-1}
+
+    followed by a sum-to-one normalization.
+    """
+
+    def __init__(self, epsilon: Optional[float] = None, name: Optional[str] = None, **kwargs):
+        if name is None:
+            raise ValueError("EigenWeightsLayer must have a name.")
+        super().__init__(name=name, **kwargs)
+        self.epsilon = float(epsilon if epsilon is not None else K.epsilon())
+
+    def build(self, input_shape) -> None:
+        super().build(input_shape)
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor]) -> tf.Tensor:
+        eigenvectors, inverse_eigenvalues, inverse_std = inputs
+        dtype = eigenvectors.dtype
+
+        eigenvectors = tf.convert_to_tensor(eigenvectors, dtype=dtype)
+        inverse_eigenvalues = tf.convert_to_tensor(inverse_eigenvalues, dtype=dtype)
+        inverse_std = tf.convert_to_tensor(inverse_std, dtype=dtype)
+
+        eigenvector_sum = tf.reduce_sum(eigenvectors, axis=-2)
+        target_shape = tf.shape(eigenvector_sum)
+
+        inverse_eigenvalues = tf.reshape(inverse_eigenvalues, target_shape)
+        inverse_std = tf.reshape(inverse_std, target_shape)
+
+        raw_weights = tf.einsum(
+            '...ik,...k,...k,...i->...i',
+            eigenvectors,
+            inverse_eigenvalues,
+            eigenvector_sum,
+            inverse_std
+        )
+
+        denom = tf.reduce_sum(raw_weights, axis=-1, keepdims=True)
+        epsilon = epsilon_for_dtype(dtype, self.epsilon)
+        sign = tf.where(denom >= 0, tf.ones_like(denom), -tf.ones_like(denom))
+        safe_denom = tf.where(tf.abs(denom) < epsilon, sign * epsilon, denom)
+        weights = raw_weights / safe_denom
+
+        return tf.expand_dims(weights, axis=-1)
+
     def get_config(self) -> dict:
         config = super().get_config()
-        config.update({'scaling_factor': self.scaling_factor})
+        config.update({'epsilon': self.epsilon})
         return config
 
 @tf.keras.utils.register_keras_serializable(package='compact_rienet')
@@ -968,7 +1052,9 @@ __all__ = [
     'DeepLayer',
     'DeepRecurrentLayer',
     'CustomNormalizationLayer',
+    'EigenvectorRescalingLayer',
     'EigenProductLayer',
+    'EigenWeightsLayer',
     'NormalizedSum',
     'LagTransformLayer',
 ]
