@@ -93,6 +93,17 @@ class TestCompactRIEnetLayer:
         expected_shape = (batch_size, n_stocks, n_stocks)
         assert outputs.shape == expected_shape, f"Expected {expected_shape}, got {outputs.shape}"
     
+    def test_correlation_output_shape(self):
+        """Test that correlation output has correct shape."""
+        layer = CompactRIEnetLayer(output_type='correlation')
+
+        batch_size, n_stocks, n_days = 7, 6, 30
+        inputs = tf.random.normal((batch_size, n_stocks, n_days))
+        outputs = layer(inputs)
+
+        expected_shape = (batch_size, n_stocks, n_stocks)
+        assert outputs.shape == expected_shape, f"Expected {expected_shape}, got {outputs.shape}"
+    
     def test_weights_normalization(self):
         """Test that portfolio weights sum to 1."""
         layer = CompactRIEnetLayer(output_type='weights')

@@ -60,7 +60,7 @@ class CompactRIEnetLayer(layers.Layer):
     ----------
     output_type : Union[str, Sequence[str]], default 'weights'
         Component(s) to return. Each entry must belong to
-        {'weights', 'precision', 'covariance', 'input_transformed'} or the special string
+        {'weights', 'precision', 'covariance', 'correlation', 'input_transformed'} or the special string
         'all'. When multiple components are requested a dictionary mapping component name
         to tensor is returned.
     recurrent_layer_sizes : Sequence[int], optional
@@ -93,7 +93,7 @@ class CompactRIEnetLayer(layers.Layer):
     ------------
     Depends on ``output_type``:
         - 'weights' -> (batch_size, n_stocks, 1)
-        - 'precision' or 'covariance' -> (batch_size, n_stocks, n_stocks)
+        - 'precision', 'covariance', or 'correlation' -> (batch_size, n_stocks, n_stocks)
         - 'input_transformed' -> (batch_size, n_stocks, n_days)
         - Multiple components -> ``dict`` mapping component name to the shapes above
 
@@ -161,7 +161,7 @@ class CompactRIEnetLayer(layers.Layer):
         """
         super().__init__(name=name, **kwargs)
 
-        allowed_outputs = ('weights', 'precision', 'covariance', 'input_transformed')
+        allowed_outputs = ('weights', 'precision', 'covariance', 'correlation', 'input_transformed')
         self._output_config = output_type if isinstance(output_type, str) else list(output_type)
 
         if isinstance(output_type, str):
@@ -170,7 +170,7 @@ class CompactRIEnetLayer(layers.Layer):
             else:
                 if output_type not in allowed_outputs:
                     raise ValueError(
-                        "output_type must be one of 'weights', 'precision', 'covariance', 'input_transformed', or 'all'"
+                        "output_type must be one of 'weights', 'precision', 'covariance', 'correlation', 'input_transformed', or 'all'"
                     )
                 components = [output_type]
         else:
@@ -184,7 +184,7 @@ class CompactRIEnetLayer(layers.Layer):
                     continue
                 if entry not in allowed_outputs:
                     raise ValueError(
-                        "All requested outputs must be in {'weights', 'precision', 'covariance', 'input_transformed', 'all'}"
+                        "All requested outputs must be in {'weights', 'precision', 'covariance', 'correlation', 'input_transformed', 'all'}"
                     )
                 expanded.append(entry)
             seen = set()
@@ -368,11 +368,13 @@ class CompactRIEnetLayer(layers.Layer):
             - weights: portfolio weights (batch, n_stocks, 1)
             - precision: cleaned precision matrix Σ^{-1}
             - covariance: pseudo-inverse covariance Σ
+            - correlation: cleaned correlation matrix
         """
         need_precision = 'precision' in self.output_components
         need_covariance = 'covariance' in self.output_components
+        need_correlation = 'correlation' in self.output_components
         need_weights = 'weights' in self.output_components
-        need_structural_outputs = need_precision or need_covariance or need_weights
+        need_structural_outputs = need_precision or need_covariance or need_correlation or need_weights
 
         # Scale inputs by annualization factor
         scaled_inputs = inputs * self._annualization_factor
@@ -408,40 +410,54 @@ class CompactRIEnetLayer(layers.Layer):
         
         # Transform eigenvalues with recurrent network
         transformed_inverse_eigenvalues = self.eigenvalue_transform(eigenvalues_contextualized)
-        transformed_eigenvalues = tf.math.reciprocal(transformed_inverse_eigenvalues)
-
-        # Rescale eigenvectors to ensure 1 on diagonal after cleaning
-        adjusted_eigenvectors = self.eigenvector_rescaler([eigenvectors, transformed_eigenvalues])
 
         # Transform standard deviations (normalize only when needed downstream)
-        transformed_inverse_std = self.std_transform(std)
-        if self.std_normalization is not None and (need_precision or need_covariance):
-            transformed_inverse_std = self.std_normalization(transformed_inverse_std)
+        need_inverse_std = need_precision or need_covariance or need_weights
+        transformed_inverse_std = None
+        std_for_structural = None
+        if need_inverse_std:
+            transformed_inverse_std = self.std_transform(std)
+            std_for_structural = transformed_inverse_std
+            if self.std_normalization is not None and (need_precision or need_covariance):
+                std_for_structural = self.std_normalization(transformed_inverse_std)
        
         # Precision-specific reconstruction
+        inverse_correlation = None
         if need_precision:
-            inverse_correlation = self.eigen_product(
-                transformed_inverse_eigenvalues, adjusted_eigenvectors
+            inverse_eigenvectors = self.eigenvector_rescaler(
+                [eigenvectors, transformed_inverse_eigenvalues]
             )
-            inverse_volatility_matrix = self.outer_product(transformed_inverse_std)
+            inverse_correlation = self.eigen_product(
+                transformed_inverse_eigenvalues, inverse_eigenvectors
+            )
+            inverse_volatility_matrix = self.outer_product(std_for_structural)
             precision_matrix = inverse_correlation * inverse_volatility_matrix
             results['precision'] = precision_matrix
 
-        # Covariance-specific reconstruction
-        if need_covariance:
-            cleaned_correlation = self.correlation_product(
-                transformed_eigenvalues, adjusted_eigenvectors
+        cleaned_correlation = None
+        if need_covariance or need_correlation:
+            transformed_eigenvalues = tf.math.reciprocal(transformed_inverse_eigenvalues)
+            direct_eigenvectors = self.eigenvector_rescaler(
+                [eigenvectors, transformed_eigenvalues]
             )
-            transformed_std = tf.math.reciprocal(transformed_inverse_std)
+            cleaned_correlation = self.correlation_product(
+                transformed_eigenvalues, direct_eigenvectors
+            )
+
+        if need_covariance:
+            transformed_std = tf.math.reciprocal(std_for_structural)
             volatility_matrix = self.outer_product(transformed_std)
             covariance = cleaned_correlation * volatility_matrix
             results['covariance'] = covariance
+
+        if need_correlation:
+            results['correlation'] = cleaned_correlation
 
         if need_weights:
             weights = self.weight_layer([
                 eigenvectors,
                 transformed_inverse_eigenvalues,
-                transformed_inverse_std
+                std_for_structural
             ])
             results['weights'] = weights
 
