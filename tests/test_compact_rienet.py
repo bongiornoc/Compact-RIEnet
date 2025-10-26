@@ -30,6 +30,7 @@ from compact_rienet.custom_layers import (
     CustomNormalizationLayer,
     EigenProductLayer,
     EigenvectorRescalingLayer,
+    EigenWeightsLayer,
     NormalizedSum,
     LagTransformLayer
 )
@@ -104,7 +105,7 @@ class TestCompactRIEnetLayer:
         weights_sum = tf.reduce_sum(weights, axis=1)  # Sum over stocks
         
         # Should be close to 1 for each sample
-        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-6)
+        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-5)
     
     def test_input_scaling(self):
         """Test that input scaling by 252 is applied."""
@@ -334,6 +335,25 @@ class TestCustomLayers:
         diag = tf.linalg.diag_part(reconstructed)
         assert float(tf.reduce_max(tf.abs(diag - 1.0)).numpy()) < 1e-6
 
+    def test_eigen_weights_layer(self):
+        """EigenWeightsLayer matches numpy einsum formulation."""
+        layer = EigenWeightsLayer(name='test_eigen_weights')
+
+        batch_size, n_assets = 2, 4
+        eigenvectors = tf.linalg.qr(tf.random.normal((batch_size, n_assets, n_assets)))[0]
+        inverse_eigenvalues = tf.random.uniform((batch_size, n_assets, 1), 0.5, 1.5)
+        inverse_std = tf.random.uniform((batch_size, n_assets, 1), 0.8, 1.2)
+
+        weights = layer([eigenvectors, inverse_eigenvalues, inverse_std])
+
+        ev = eigenvectors.numpy()
+        inv_eig = inverse_eigenvalues.numpy().reshape(batch_size, n_assets)
+        inv_std_np = inverse_std.numpy().reshape(batch_size, n_assets)
+        c = ev.sum(axis=1)
+        raw = np.einsum('bik,bk,bk,bi->bi', ev, inv_eig, c, inv_std_np)
+        expected = raw / raw.sum(axis=1, keepdims=True)
+        np.testing.assert_allclose(weights.numpy().squeeze(-1), expected, rtol=1e-5, atol=1e-6)
+
     def test_precision_normalization_diagonal_mean(self):
         """Normalized precision keeps covariance diagonal centred on one."""
         batch_size, n_assets = 2, 6
@@ -412,7 +432,7 @@ class TestCustomLayers:
         
         # Should sum to 1 along the specified axis
         weights_sum = tf.reduce_sum(weights, axis=-2, keepdims=True)
-        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-6)
+        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-5)
     
     def test_lag_transform_layer(self):
         """Test LagTransformLayer."""

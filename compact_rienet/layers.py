@@ -31,7 +31,7 @@ from .custom_layers import (
     CustomNormalizationLayer,
     EigenProductLayer,
     EigenvectorRescalingLayer,
-    NormalizedSum
+    EigenWeightsLayer
 )
 from .dtype_utils import epsilon_for_dtype
 
@@ -309,12 +309,9 @@ class CompactRIEnetLayer(layers.Layer):
             normalize=False,
             name=f"{self.name}_inverse_scale_outer"
         )
-        
-        # Portfolio weight computation
-        self.portfolio_weights = NormalizedSum(
-            axis_1=-1, 
-            axis_2=-2, 
-            name=f"{self.name}_portfolio_weights"
+
+        self.weight_layer = EigenWeightsLayer(
+            name=f"{self.name}_weights"
         )
 
     def build(self, input_shape: Tuple[int, int, int]) -> None:
@@ -348,7 +345,7 @@ class CompactRIEnetLayer(layers.Layer):
         self.eigen_product.build([eigenvalues_vector_shape, covariance_shape])
         self.correlation_product.build([eigenvalues_vector_shape, covariance_shape])
         self.outer_product.build(std_shape)
-        self.portfolio_weights.build(covariance_shape)
+        self.weight_layer.build([covariance_shape, eigenvalues_shape, std_shape])
 
         super().build(input_shape)
         
@@ -437,7 +434,11 @@ class CompactRIEnetLayer(layers.Layer):
             results['covariance'] = covariance
 
         if 'weights' in self.output_components:
-            weights = self.portfolio_weights(precision_matrix)
+            weights = self.weight_layer([
+                eigenvectors,
+                transformed_inverse_eigenvalues,
+                transformed_inverse_std
+            ])
             results['weights'] = weights
 
         if 'input_transformed' in self.output_components:

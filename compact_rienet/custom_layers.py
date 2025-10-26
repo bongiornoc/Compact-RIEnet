@@ -789,6 +789,64 @@ class EigenProductLayer(layers.Layer):
     def get_config(self) -> dict:
         return super().get_config()
 
+
+@tf.keras.utils.register_keras_serializable(package='compact_rienet')
+class EigenWeightsLayer(layers.Layer):
+    """
+    Layer computing GMV-like weights from eigenvectors, eigenvalues and stds.
+
+    Implements the einsum-based rule::
+
+        c_i = sum_j V_{ij}
+        w_i ∝ Σ_k V_{ik} λ_k^{-1} c_k σ_i^{-1}
+
+    followed by a sum-to-one normalization.
+    """
+
+    def __init__(self, epsilon: Optional[float] = None, name: Optional[str] = None, **kwargs):
+        if name is None:
+            raise ValueError("EigenWeightsLayer must have a name.")
+        super().__init__(name=name, **kwargs)
+        self.epsilon = float(epsilon if epsilon is not None else K.epsilon())
+
+    def build(self, input_shape) -> None:
+        super().build(input_shape)
+
+    def call(self, inputs: Tuple[tf.Tensor, tf.Tensor, tf.Tensor]) -> tf.Tensor:
+        eigenvectors, inverse_eigenvalues, inverse_std = inputs
+        dtype = eigenvectors.dtype
+
+        eigenvectors = tf.convert_to_tensor(eigenvectors, dtype=dtype)
+        inverse_eigenvalues = tf.convert_to_tensor(inverse_eigenvalues, dtype=dtype)
+        inverse_std = tf.convert_to_tensor(inverse_std, dtype=dtype)
+
+        eigenvector_sum = tf.reduce_sum(eigenvectors, axis=-2)
+        target_shape = tf.shape(eigenvector_sum)
+
+        inverse_eigenvalues = tf.reshape(inverse_eigenvalues, target_shape)
+        inverse_std = tf.reshape(inverse_std, target_shape)
+
+        raw_weights = tf.einsum(
+            '...ik,...k,...k,...i->...i',
+            eigenvectors,
+            inverse_eigenvalues,
+            eigenvector_sum,
+            inverse_std
+        )
+
+        denom = tf.reduce_sum(raw_weights, axis=-1, keepdims=True)
+        epsilon = epsilon_for_dtype(dtype, self.epsilon)
+        sign = tf.where(denom >= 0, tf.ones_like(denom), -tf.ones_like(denom))
+        safe_denom = tf.where(tf.abs(denom) < epsilon, sign * epsilon, denom)
+        weights = raw_weights / safe_denom
+
+        return tf.expand_dims(weights, axis=-1)
+
+    def get_config(self) -> dict:
+        config = super().get_config()
+        config.update({'epsilon': self.epsilon})
+        return config
+
 @tf.keras.utils.register_keras_serializable(package='compact_rienet')
 class NormalizedSum(layers.Layer):
     """
@@ -996,6 +1054,7 @@ __all__ = [
     'CustomNormalizationLayer',
     'EigenvectorRescalingLayer',
     'EigenProductLayer',
+    'EigenWeightsLayer',
     'NormalizedSum',
     'LagTransformLayer',
 ]
