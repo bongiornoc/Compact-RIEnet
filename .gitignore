@@ -1,9 +1,0 @@
-*.pyc
-__pycache__/
-build/
-dist/
-*.egg-info/
-.venv/
-tests/*.ipynb
-test_import.py
-.gitignore
