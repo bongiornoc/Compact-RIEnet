@@ -4,7 +4,12 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Compact-RIEnet implements a **parameter-efficient, end-to-end neural estimator** for **Global Minimum-Variance (GMV)** portfolios. The architecture couples a **five-parameter lag-kernel** with a **bidirectional GRU spectral denoiser** and a **marginal-volatility head** to produce cleaned inverse covariances and analytic GMV weights. By design, the number of learnable parameters is **independent of the look-back window length and the asset-universe size**, enabling immediate transfer across universes and sampling frequencies without retraining. The model can be trained directly on a realized-variance objective and can export its cleaned covariance for constrained optimizations.
+**This library implements the neural estimators introduced in:**
+- **Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918). [https://arxiv.org/abs/2507.01918](https://arxiv.org/abs/2507.01918)**
+- **Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. In *Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF ’25)*. [https://doi.org/10.1145/3768292.3770370](https://doi.org/10.1145/3768292.3770370)**
+**
+
+Compact-RIEnet is a **parameter-efficient, end-to-end neural estimator** for **Global Minimum-Variance (GMV)** portfolios. The architecture couples a **five-parameter lag-kernel** with a **bidirectional GRU spectral denoiser** and a **marginal-volatility head** to produce cleaned inverse covariances and analytic GMV weights. By design, the number of learnable parameters is **independent of the look-back window length and the asset-universe size**, enabling immediate transfer across universes and sampling frequencies without retraining. The model can be trained directly on a realized-variance objective and can export its cleaned covariance for constrained optimizations.
 
 ## Key Features
 
@@ -169,11 +174,22 @@ Please cite the following references when using Compact-RIEnet:
 
 ```bibtex
 @inproceedings{bongiorno2025compact,
-  title={Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage},
-  author={Bongiorno, Christian and Manolakis, Efstratios and Mantegna, Rosario N.},
-  booktitle={Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25)},
-  year={2025}
-}
+  author = {Bongiorno, Christian and Manolakis, Efstratios and Mantegna, Rosario Nunzio},
+  title = {Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage},
+  year = {2025},
+  isbn = {9798400722202},
+  publisher = {Association for Computing Machinery},
+  address = {New York, NY, USA},
+  url = {https://doi.org/10.1145/3768292.3770370},
+  doi = {10.1145/3768292.3770370},
+  booktitle = {Proceedings of the 6th ACM International Conference on AI in Finance},
+  pages = {449–455},
+  numpages = {7},
+  location = {},
+  series = {ICAIF '25}
+  }
+
+
 
 @article{bongiorno2025covariance,
   title={End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning},

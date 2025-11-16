@@ -123,8 +123,7 @@ class CompactRIEnetLayer(layers.Layer):
     
     References
     ----------
-    Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
-    Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage.
+    Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. In Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF ’25), 449–455. https://doi.org/10.1145/3768292.3770370
     Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918).
     """
     

@@ -8,9 +8,11 @@ transformations for financial data.
 
 References:
 -----------
-Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
-"Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage."
-Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25).
+Christian Bongiorno, Efstratios Manolakis, and Rosario Nunzio Mantegna. 2025. 
+Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. 
+In Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25). 
+Association for Computing Machinery, New York, NY, USA, 449–455. 
+https://doi.org/10.1145/3768292.3770370
 
 Copyright (c) 2025
 """
