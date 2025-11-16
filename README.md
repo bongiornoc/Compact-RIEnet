@@ -7,7 +7,7 @@
 **This library implements the neural estimators introduced in:**
 - **Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918). [https://arxiv.org/abs/2507.01918](https://arxiv.org/abs/2507.01918)**
 - **Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. In *Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF ’25)*. [https://doi.org/10.1145/3768292.3770370](https://doi.org/10.1145/3768292.3770370)**
-**
+
 
 Compact-RIEnet is a **parameter-efficient, end-to-end neural estimator** for **Global Minimum-Variance (GMV)** portfolios. The architecture couples a **five-parameter lag-kernel** with a **bidirectional GRU spectral denoiser** and a **marginal-volatility head** to produce cleaned inverse covariances and analytic GMV weights. By design, the number of learnable parameters is **independent of the look-back window length and the asset-universe size**, enabling immediate transfer across universes and sampling frequencies without retraining. The model can be trained directly on a realized-variance objective and can export its cleaned covariance for constrained optimizations.
 
