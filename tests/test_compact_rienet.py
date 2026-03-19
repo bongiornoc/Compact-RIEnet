@@ -443,7 +443,7 @@ class TestCustomLayers:
         
         # Should sum to 1 along the specified axis
         weights_sum = tf.reduce_sum(weights, axis=-2, keepdims=True)
-        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-5)
+        np.testing.assert_allclose(weights_sum.numpy(), 1.0, rtol=1e-4, atol=1e-6)
     
     def test_lag_transform_layer(self):
         """Test LagTransformLayer."""

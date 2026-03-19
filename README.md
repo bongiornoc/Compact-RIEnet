@@ -4,6 +4,11 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+
+> [!WARNING]
+> This repository is deprecated and no longer maintained.
+> Active development has moved to **https://github.com/bongiornoc/RIEnet**.
+
 **This library implements the neural estimators introduced in:**
 - **Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918). [https://arxiv.org/abs/2507.01918](https://arxiv.org/abs/2507.01918)**
 - **Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. In *Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF ’25)*. [https://doi.org/10.1145/3768292.3770370](https://doi.org/10.1145/3768292.3770370)**
