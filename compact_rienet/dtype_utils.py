@@ -1,11 +1,9 @@
 """
-Utility helpers to keep sensitive operations in float32 under mixed precision.
+Mixed-precision helpers for the legacy Compact-RIEnet package.
 
-These functions centralise the logic for casting tensors to float32 when the
-active mixed-precision policy would otherwise request lower precision (e.g.
-float16 or bfloat16) and for restoring the original dtype afterwards. They also
-provide dtype-aware epsilon values so that stability constants track the active
-precision.
+This module belongs to the deprecated Compact-RIEnet package. For maintained
+development, install ``rienet`` and use the code hosted at
+https://github.com/bongiornoc/RIEnet.
 """
 
 from __future__ import annotations

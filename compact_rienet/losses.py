@@ -1,19 +1,9 @@
 """
-Loss functions module for Compact-RIEnet.
+Loss functions for the legacy Compact-RIEnet package.
 
-This module provides the variance loss used to train Compact-RIEnet for
-global minimum-variance (GMV) portfolio optimisation.
-
-References:
------------
-Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
-"Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage."
-Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25).
-Also see Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). "End-to-End Large Portfolio
-Optimization for Variance Minimization with Neural Networks through Covariance Cleaning"
-(arXiv:2507.01918) for a broader treatment.
-
-Copyright (c) 2025
+This module belongs to the deprecated Compact-RIEnet package. For maintained
+development, install ``rienet`` and use the code hosted at
+https://github.com/bongiornoc/RIEnet.
 """
 
 import tensorflow as tf
@@ -24,27 +14,32 @@ def variance_loss_function(covariance_true: tf.Tensor,
                           weights_predicted: tf.Tensor) -> tf.Tensor:
     """
     Portfolio variance loss function for training Compact-RIEnet models.
-    
+
+    Deprecated
+    ----------
+    ``compact_rienet`` is no longer maintained. For new projects, install
+    ``rienet`` and refer to https://github.com/bongiornoc/RIEnet.
+
     This loss function computes the global minimum-variance objective using the true
     covariance matrix and predicted portfolio weights.
-    
+
     The portfolio variance is calculated as:
     variance = weights^T @ Σ @ weights
-    
+
     where Σ is the true covariance matrix and weights are the predicted portfolio weights.
-    
+
     Parameters
     ----------
     covariance_true : tf.Tensor
         Covariance matrices of shape (batch_size, n_assets, n_assets)
     weights_predicted : tf.Tensor
         Predicted portfolio weights of shape (batch_size, n_assets, 1)
-        
+
     Returns
     -------
     tf.Tensor
         Portfolio variance loss, shape (batch_size, 1, 1)
-        
+
     Notes
     -----
     The loss function assumes:
@@ -66,8 +61,8 @@ def variance_loss_function(covariance_true: tf.Tensor,
     >>> # Compute loss
     >>> loss = variance_loss_function(covariance, weights)
     >>> print(f"Portfolio variance: {loss.shape}")  # (32, 1, 1)
-    
-"""
+
+    """
     dtype = weights_predicted.dtype
     n = tf.cast(tf.shape(covariance_true)[-1], dtype=dtype)
 

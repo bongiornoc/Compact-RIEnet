@@ -8,6 +8,7 @@
 > [!WARNING]
 > This repository is deprecated and no longer maintained.
 > Active development has moved to **https://github.com/bongiornoc/RIEnet**.
+> For new installations, use **`pip install rienet`**.
 
 **This library implements the neural estimators introduced in:**
 - **Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning (arXiv:2507.01918). [https://arxiv.org/abs/2507.01918](https://arxiv.org/abs/2507.01918)**
@@ -27,13 +28,19 @@ Compact-RIEnet is a **parameter-efficient, end-to-end neural estimator** for **G
 
 ## Installation
 
-Install from PyPI:
+For new work, install the actively maintained package:
+
+```bash
+pip install rienet
+```
+
+Install `compact-rienet` only if you need this legacy package for reproducibility:
 
 ```bash
 pip install compact-rienet
 ```
 
-Or install from source:
+Or install the legacy source tree directly:
 
 ```bash
 git clone https://github.com/bongiornoc/Compact-RIEnet.git
@@ -42,6 +49,10 @@ pip install -e .
 ```
 
 ## Quick Start
+
+The examples below document the legacy `compact_rienet` API preserved in this
+repository. For maintained installation and up-to-date usage guidance, see
+**https://github.com/bongiornoc/RIEnet**.
 
 ### Basic Usage
 

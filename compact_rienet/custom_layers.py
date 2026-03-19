@@ -1,20 +1,9 @@
 """
-Custom layers module for Compact-RIEnet.
+Internal layers for the legacy Compact-RIEnet package.
 
-This module contains all the specialized neural network layers required for the
-Compact-RIEnet architecture, including layers for covariance estimation,
-Rotational Invariant Estimator (RIE) based eigenvalue cleaning, and specialized
-transformations for financial data.
-
-References:
------------
-Christian Bongiorno, Efstratios Manolakis, and Rosario Nunzio Mantegna. 2025. 
-Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. 
-In Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25). 
-Association for Computing Machinery, New York, NY, USA, 449–455. 
-https://doi.org/10.1145/3768292.3770370
-
-Copyright (c) 2025
+This module belongs to the deprecated Compact-RIEnet package. For maintained
+development, install ``rienet`` and use the code hosted at
+https://github.com/bongiornoc/RIEnet.
 """
 
 import math

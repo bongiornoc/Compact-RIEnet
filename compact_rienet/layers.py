@@ -1,19 +1,13 @@
 """
-Compact-RIEnet: A Compact Rotational Invariant Eigenvalue Network for Portfolio Optimization
+Legacy Compact-RIEnet layers for portfolio optimisation.
 
-This module implements the Compact-RIEnet layer, a neural network architecture for 
-portfolio optimization that processes financial time series data and outputs portfolio weights.
+This module belongs to the deprecated Compact-RIEnet package. For maintained
+development, install ``rienet`` and use the code hosted at
+https://github.com/bongiornoc/RIEnet.
 
-The architecture is based on Rotational Invariant Estimators (RIE) of the covariance matrix
-combined with recurrent neural networks to capture temporal dependencies in financial data.
-
-References:
------------
-Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
-"Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage."
-Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF '25).
-
-Copyright (c) 2025
+The module implements the Compact-RIEnet layer, a neural network architecture
+for portfolio optimization that processes financial time series data and outputs
+portfolio weights.
 """
 
 import tensorflow as tf
@@ -40,6 +34,11 @@ from .dtype_utils import epsilon_for_dtype
 class CompactRIEnetLayer(layers.Layer):
     """
     Compact Rotational Invariant Estimator (RIE) Network layer for GMV portfolios.
+
+    Deprecated
+    ----------
+    ``compact_rienet`` is no longer maintained. For new projects, install
+    ``rienet`` and refer to https://github.com/bongiornoc/RIEnet.
 
     This layer implements the compact network described in Bongiorno et al. (2025) for
     global minimum-variance (GMV) portfolio construction. The architecture couples
@@ -136,8 +135,8 @@ class CompactRIEnetLayer(layers.Layer):
                  name: Optional[str] = None,
                  **kwargs):
         """
-        Initialize the Compact-RIEnet layer.
-        
+        Initialize the legacy Compact-RIEnet layer.
+
         Parameters
         ----------
         output_type : Union[str, Sequence[str]], default 'weights'

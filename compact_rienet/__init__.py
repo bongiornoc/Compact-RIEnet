@@ -1,29 +1,30 @@
 """
-Compact-RIEnet: A Compact Rotational Invariant Estimator Network for Global Minimum-Variance Optimisation
+Legacy Compact-RIEnet package for global minimum-variance portfolio optimisation.
 
-Compact-RIEnet implements the compact RIE-based architecture introduced in Bongiorno et al. (2025) for global minimum-variance (GMV) portfolio construction. It processes financial return tensors and outputs optimised GMV portfolio weights using Rotational Invariant Estimator (RIE) techniques for covariance cleaning combined with recurrent neural networks.
+This repository is deprecated and no longer maintained. Active development has
+moved to RIEnet:
 
-Key Features:
-- GMV-focused objective with a differentiable variance loss
-- RIE-denoised covariance spectrum for dimension-agnostic deployment
-- Configurable recurrent cleaning block (GRU/LSTM) with paper-aligned defaults
-- Professional implementation with documentation, tests, and type hints
+- Install the maintained package with ``pip install rienet``
+- Repository: https://github.com/bongiornoc/RIEnet
 
-Main Components:
-- `CompactRIEnetLayer`: GMV layer returning weights, precision, and/or covariance
-- `variance_loss_function`: Training objective for variance minimisation
-- `custom_layers`: Internal building blocks of the architecture
-
-References:
------------
-- Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). Neural Network-Driven Volatility Drag Mitigation under Aggressive Leverage. ICAIF '25.
-- Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025). End-to-End Large Portfolio Optimization for Variance Minimization with Neural Networks through Covariance Cleaning. arXiv:2507.01918.
-
-Contact Prof. Christian Bongiorno (<christian.bongiorno@centralesupelec.fr>) for calibrated weights or collaboration requests.
-
-Copyright (c) 2025
-Project URL: https://github.com/author/compact-rienet
+Compact-RIEnet implements the compact RIE-based architecture introduced in
+Bongiorno et al. (2025) for global minimum-variance (GMV) portfolio
+construction. It processes financial return tensors and outputs optimised GMV
+portfolio weights using Rotational Invariant Estimator (RIE) techniques for
+covariance cleaning combined with recurrent neural networks.
 """
+
+import warnings
+
+_ACTIVE_REPOSITORY_URL = "https://github.com/bongiornoc/RIEnet"
+_REPLACEMENT_INSTALL_COMMAND = "pip install rienet"
+_DEPRECATION_WARNING = (
+    "compact_rienet is deprecated and no longer maintained. "
+    f"Install the actively maintained replacement with `{_REPLACEMENT_INSTALL_COMMAND}` "
+    f"and see {_ACTIVE_REPOSITORY_URL}."
+)
+
+warnings.warn(_DEPRECATION_WARNING, FutureWarning)
 
 from .layers import CompactRIEnetLayer
 from .losses import variance_loss_function
@@ -46,8 +47,12 @@ __all__ = [
 
 # Citation reminder
 def print_citation():
-    """Print citation information for academic use."""
+    """Print citation information for the legacy Compact-RIEnet package."""
     citation = """
+    Compact-RIEnet is deprecated and no longer maintained.
+    Install the actively maintained replacement with `pip install rienet`.
+    Active repository: https://github.com/bongiornoc/RIEnet
+
     Please cite the following references when using Compact-RIEnet:
 
     Bongiorno, C., Manolakis, E., & Mantegna, R. N. (2025).
